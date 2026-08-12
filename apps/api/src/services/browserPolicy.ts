@@ -6,6 +6,15 @@ const blockedNames = new Set([
   'gateway.docker.internal',
   'metadata.google.internal',
 ]);
+const blockedSuffixes = [
+  '.localhost',
+  '.local',
+  '.internal',
+  '.home.arpa',
+  '.invalid',
+  '.test',
+  '.example',
+];
 
 function normalizeHostname(hostname: string): string {
   return hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '').replace(/\.$/, '');
@@ -15,7 +24,7 @@ function isPrivateIpv4(hostname: string): boolean {
   const octets = hostname.split('.').map(Number);
   if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part))) return true;
 
-  const [a = 0, b = 0] = octets;
+  const [a = 0, b = 0, c = 0] = octets;
   return (
     a === 0 ||
     a === 10 ||
@@ -23,8 +32,11 @@ function isPrivateIpv4(hostname: string): boolean {
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
     (a === 192 && b === 168) ||
     (a === 198 && (b === 18 || b === 19)) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113) ||
     a >= 224
   );
 }
@@ -54,18 +66,15 @@ export function isBlockedBrowserUrl(value: string): boolean {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return true;
 
   const hostname = normalizeHostname(url.hostname);
-  if (
-    blockedNames.has(hostname) ||
-    hostname.endsWith('.localhost') ||
-    hostname.endsWith('.local')
-  ) {
-    return true;
-  }
+  if (!hostname || blockedNames.has(hostname)) return true;
+  if (blockedSuffixes.some((suffix) => hostname.endsWith(suffix))) return true;
 
   const ipVersion = isIP(hostname);
   if (ipVersion === 4) return isPrivateIpv4(hostname);
   if (ipVersion === 6) return isPrivateIpv6(hostname);
-  return false;
+
+  // Single-label names normally resolve through local search domains and are not needed by marketplaces.
+  return !hostname.includes('.');
 }
 
 export function isAllowedMainNavigation(value: string, allowedHosts: readonly string[]): boolean {
