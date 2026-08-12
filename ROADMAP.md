@@ -15,7 +15,7 @@ Objectif : la première release publique doit être réellement exploitable en p
 
 - [ ] améliorer la tolérance aux changements Vinted / Leboncoin ;
 - [x] ajouter eBay proprement via l'API Browse officielle, optionnelle et configurée uniquement côté serveur ;
-- [ ] renforcer la reprise de file et les retours d'erreur ;
+- [x] renforcer la reprise de file et les retours d'erreur avec classification transient/configuration/item et reprise persistée après interruption ;
 - [ ] ajouter des tests end-to-end sur appareils mobiles / profils mobiles représentatifs.
 
 ## v1.0 — gate prod-ready

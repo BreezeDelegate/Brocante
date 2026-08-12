@@ -13,8 +13,13 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { allProvidersFailed, providerErrorLabel } from './analysis';
-import { activeProviders, identify, search } from './api';
+import {
+  allProvidersFailed,
+  providerErrorLabel,
+  shouldPauseBatch,
+  shouldProcessInBatch,
+} from './analysis';
+import { activeProviders, apiErrorKind, identify, search } from './api';
 import { estimate } from './estimate';
 import { captureVideoFrame, compressImage } from './image';
 import {
@@ -172,7 +177,11 @@ export function App() {
 
     const providers = activeProviders(preferences);
     if (providers.length === 0) {
-      patchScan(scan.id, { status: 'error', error: 'Active au moins une source.' });
+      patchScan(scan.id, {
+        status: 'error',
+        errorKind: 'configuration',
+        error: 'Active au moins une source.',
+      });
       return false;
     }
 
@@ -180,6 +189,7 @@ export function App() {
     patchScan(scan.id, {
       status: 'processing',
       error: undefined,
+      errorKind: undefined,
       providerErrors: undefined,
       lastAttemptAt: Date.now(),
     });
@@ -190,6 +200,7 @@ export function App() {
       if (!label) {
         patchScan(scan.id, {
           status: 'draft',
+          errorKind: undefined,
           error: 'Ajoute un nom ou active Ollama sur le serveur.',
         });
         return true;
@@ -200,6 +211,7 @@ export function App() {
       if (allProvidersFailed(result.errors, providers) && result.listings.length === 0) {
         patchScan(scan.id, {
           status: 'error',
+          errorKind: 'transient',
           providerErrors: result.errors,
           error: 'Aucune source n’a pu répondre. La file est mise en pause.',
         });
@@ -212,14 +224,17 @@ export function App() {
         providerErrors: result.errors.length ? result.errors : undefined,
         status: 'done',
         error: undefined,
+        errorKind: undefined,
       });
       return true;
     } catch (error) {
+      const errorKind = apiErrorKind(error);
       patchScan(scan.id, {
         status: 'error',
+        errorKind,
         error: error instanceof Error ? error.message : 'Erreur inconnue',
       });
-      return false;
+      return !shouldPauseBatch(errorKind);
     } finally {
       inFlight.current.delete(scan.id);
     }
@@ -229,9 +244,7 @@ export function App() {
     if (batchRunning) return;
     setBatchRunning(true);
     try {
-      for (const scan of scans.filter(
-        (item) => item.status === 'draft' || item.status === 'error',
-      )) {
+      for (const scan of scans.filter(shouldProcessInBatch)) {
         if (inFlight.current.has(scan.id)) continue;
         const shouldContinue = await run(scan);
         if (!shouldContinue) break;
@@ -344,6 +357,12 @@ export function App() {
                 </div>
               )}
               {scan.error && <small className="error">{scan.error}</small>}
+              {scan.errorKind === 'item' && (
+                <small className="hint">Cet objet sera ignoré par les prochains lots.</small>
+              )}
+              {scan.errorKind === 'configuration' && (
+                <small className="hint">Corrige les réglages avant de relancer la file.</small>
+              )}
               {scan.providerErrors && scan.providerErrors.length > 0 && (
                 <div className="warning">
                   <AlertTriangle />

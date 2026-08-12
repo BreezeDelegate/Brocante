@@ -1,4 +1,4 @@
-import type { ProviderError, ProviderId, Scan } from './types';
+import type { ProviderError, ProviderId, Scan, ScanErrorKind } from './types';
 
 const providerNames: Record<ProviderId, string> = {
   vinted: 'Vinted',
@@ -21,6 +21,7 @@ export function interruptedScan(scan: Scan): Scan {
   return {
     ...scan,
     status: 'error',
+    errorKind: 'transient',
     error: 'Analyse interrompue. Relance-la pour reprendre.',
   };
 }
@@ -29,4 +30,14 @@ export function allProvidersFailed(errors: ProviderError[], providers: ProviderI
   if (providers.length === 0) return false;
   const failed = new Set(errors.map((error) => error.provider));
   return providers.every((provider) => failed.has(provider));
+}
+
+export function shouldProcessInBatch(scan: Scan): boolean {
+  if (scan.status === 'draft') return true;
+  if (scan.status !== 'error') return false;
+  return scan.errorKind !== 'item';
+}
+
+export function shouldPauseBatch(errorKind: ScanErrorKind): boolean {
+  return errorKind !== 'item';
 }

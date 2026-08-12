@@ -1,6 +1,7 @@
 export type ProviderId = 'vinted' | 'leboncoin' | 'ebay';
 export type ProviderErrorCode = 'busy' | 'timeout' | 'unavailable';
 export type ScanStatus = 'draft' | 'processing' | 'done' | 'error';
+export type ScanErrorKind = 'transient' | 'configuration' | 'item';
 
 export interface Listing {
   id: string;
@@ -35,6 +36,7 @@ export interface Scan {
   providerErrors?: ProviderError[] | undefined;
   lastAttemptAt?: number | undefined;
   error?: string | undefined;
+  errorKind?: ScanErrorKind | undefined;
 }
 
 export interface Preferences {

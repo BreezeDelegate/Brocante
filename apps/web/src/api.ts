@@ -1,4 +1,4 @@
-import type { Listing, Preferences, ProviderError, ProviderId } from './types';
+import type { Listing, Preferences, ProviderError, ProviderId, ScanErrorKind } from './types';
 
 export interface SearchResponse {
   listings: Listing[];
@@ -9,8 +9,51 @@ interface IdentifyResponse {
   label?: string;
 }
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly kind: ScanErrorKind,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'ApiRequestError';
+  }
+}
+
 function endpoint(apiBase: string, path: string): string {
   return `${apiBase.replace(/\/$/, '')}${path}`;
+}
+
+function responseError(status: number): ApiRequestError {
+  if (status === 400) {
+    return new ApiRequestError('Requête refusée par le serveur', 'item');
+  }
+  if (status === 401) {
+    return new ApiRequestError('Clé API incorrecte', 'configuration');
+  }
+  if (status === 403) {
+    return new ApiRequestError('Origine non autorisée par le serveur', 'configuration');
+  }
+  if (status === 413) {
+    return new ApiRequestError('Photo trop volumineuse pour le serveur', 'item');
+  }
+  if (status === 429) {
+    return new ApiRequestError('Trop de requêtes, réessaie plus tard', 'transient');
+  }
+  if (status >= 500) {
+    return new ApiRequestError(`Service indisponible (${status})`, 'transient');
+  }
+  return new ApiRequestError(`Configuration API invalide (${status})`, 'configuration');
+}
+
+async function responseJson<T>(response: Response): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch (error) {
+    throw new ApiRequestError('Réponse serveur invalide', 'transient', {
+      cause: error,
+    });
+  }
 }
 
 async function requestJson<T>(
@@ -20,7 +63,7 @@ async function requestJson<T>(
   timeoutMs: number,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -35,24 +78,28 @@ async function requestJson<T>(
       signal: controller.signal,
     });
 
-    if (response.status === 400) throw new Error('Requête refusée par le serveur');
-    if (response.status === 401) throw new Error('Clé API incorrecte');
-    if (response.status === 403) throw new Error('Origine non autorisée par le serveur');
-    if (response.status === 413) throw new Error('Photo trop volumineuse pour le serveur');
-    if (response.status === 429) throw new Error('Trop de requêtes, réessaie plus tard');
-    if (!response.ok) throw new Error(`Service indisponible (${response.status})`);
-    return (await response.json()) as T;
+    if (!response.ok) throw responseError(response.status);
+    return responseJson<T>(response);
   } catch (error) {
+    if (error instanceof ApiRequestError) throw error;
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Le serveur met trop de temps à répondre', { cause: error });
+      throw new ApiRequestError('Le serveur met trop de temps à répondre', 'transient', {
+        cause: error,
+      });
     }
     if (error instanceof TypeError) {
-      throw new Error('Impossible de joindre le serveur', { cause: error });
+      throw new ApiRequestError('Impossible de joindre le serveur', 'transient', {
+        cause: error,
+      });
     }
     throw error;
   } finally {
-    window.clearTimeout(timer);
+    clearTimeout(timer);
   }
+}
+
+export function apiErrorKind(error: unknown): ScanErrorKind {
+  return error instanceof ApiRequestError ? error.kind : 'transient';
 }
 
 export async function search(
@@ -67,17 +114,13 @@ export async function identify(
   preferences: Pick<Preferences, 'apiBase' | 'apiToken'>,
   imageDataUrl: string,
 ): Promise<string> {
-  try {
-    const data = await requestJson<IdentifyResponse>(
-      preferences,
-      '/identify',
-      { image: imageDataUrl },
-      55_000,
-    );
-    return data.label ?? '';
-  } catch {
-    return '';
-  }
+  const data = await requestJson<IdentifyResponse>(
+    preferences,
+    '/identify',
+    { image: imageDataUrl },
+    55_000,
+  );
+  return data.label ?? '';
 }
 
 export function activeProviders(preferences: Preferences): ProviderId[] {
