@@ -42,9 +42,9 @@ Then verify through the public HTTPS origin, including one authenticated request
 
 ## Runtime security expectations
 
-The supplied Compose configuration should remain non-root, read-only, `no-new-privileges`, all Linux capabilities dropped, bounded by a PID limit and using the project seccomp profile so Chromium can keep its sandbox active.
+The supplied Compose configuration should remain non-root, read-only and `no-new-privileges`, bounded by a PID limit, and use the project seccomp profile so Chromium can keep its sandbox active. The capability model is `cap_drop: ALL` followed by `cap_add: SYS_CHROOT` only; that single capability is retained for Chromium's filesystem sandbox step.
 
-A provider/browser launch failure is not a reason to add privileged mode, `SYS_ADMIN` or host networking. Diagnose kernel/seccomp/AppArmor support or isolate the browser workload more strongly instead.
+A provider/browser launch failure is not a reason to add privileged mode, `SYS_ADMIN`, host networking or additional capabilities without a documented threat analysis. Diagnose kernel/seccomp/AppArmor support or isolate the browser workload more strongly instead.
 
 ## Health and monitoring
 
