@@ -31,8 +31,12 @@ function endpoint(apiBase: string, path: string): string {
 }
 
 function responseError(status: number): ApiRequestError {
-  if (status === 400) return new ApiRequestError('Requête refusée par le serveur', 'item');
-  if (status === 401) return new ApiRequestError('Clé API incorrecte', 'configuration');
+  if (status === 400) {
+    return new ApiRequestError('Requête refusée par le serveur', 'item');
+  }
+  if (status === 401) {
+    return new ApiRequestError('Clé API incorrecte', 'configuration');
+  }
   if (status === 403) {
     return new ApiRequestError('Origine non autorisée par le serveur', 'configuration');
   }
@@ -52,7 +56,9 @@ async function responseJson<T>(response: Response): Promise<T> {
   try {
     return (await response.json()) as T;
   } catch (error) {
-    throw new ApiRequestError('Réponse serveur invalide', 'transient', { cause: error });
+    throw new ApiRequestError('Réponse serveur invalide', 'transient', {
+      cause: error,
+    });
   }
 }
 
@@ -107,7 +113,12 @@ export async function search(
   label: string,
   providers: ProviderId[],
 ): Promise<SearchResponse> {
-  return requestJson<SearchResponse>(preferences, '/search', { query: label, providers }, 120_000);
+  return requestJson<SearchResponse>(
+    preferences,
+    '/search',
+    { query: label, providers },
+    120_000,
+  );
 }
 
 export async function identify(
