@@ -133,6 +133,7 @@ function marketplaceResult(query) {
 }
 
 async function installApiMock(page) {
+  let identifyCount = 0;
   await page.route('**/api/search', async (route) => {
     const body = route.request().postDataJSON();
     const query = typeof body?.query === 'string' ? body.query : 'objet fort';
@@ -142,13 +143,14 @@ async function installApiMock(page) {
       body: JSON.stringify(marketplaceResult(query)),
     });
   });
-  await page.route('**/api/identify', (route) =>
-    route.fulfill({
+  await page.route('**/api/identify', (route) => {
+    const label = identifyCount++ === 0 ? 'objet faible' : 'objet fort';
+    return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ label: '' }),
-    }),
-  );
+      body: JSON.stringify({ label }),
+    });
+  });
 }
 
 async function testBatchAndFilter(page) {
@@ -159,26 +161,26 @@ async function testBatchAndFilter(page) {
     { name: 'objet-b.jpg', mimeType: 'image/jpeg', buffer: JPEG_IMAGE },
   ]);
 
-  const cards = page.locator('.card');
+  const cards = page.locator('.scanCard');
   await eventually(
     async () => (await cards.count()) === 2,
     'Two imported objects were not rendered',
   );
-  await cards.nth(0).locator('input').fill('objet faible');
-  await cards.nth(1).locator('input').fill('objet fort');
+  assert.equal(await page.getByRole('button', { name: "Supprimer l'objet" }).count(), 2);
 
-  await page.locator('.hero').getByRole('button', { name: 'Analyser', exact: true }).click();
+  await page.getByRole('button', { name: /Analyser tout/ }).click();
   await eventually(
     async () => (await page.locator('.toolbar').textContent())?.includes('1/2 objets') ?? false,
     'Minimum-value filter did not hide the low-value result',
     20_000,
   );
-  assert.equal(await page.locator('.card').count(), 1);
-  assert.match((await page.locator('.card').textContent()) ?? '', /12 €/);
+  assert.equal(await page.locator('.scanCard').count(), 1);
+  assert.match((await page.locator('.scanCard').textContent()) ?? '', /12 €/);
+  assert.match((await page.locator('.scanCard').textContent()) ?? '', /Vinted/);
 
   await page.locator('.chip').click();
   await eventually(
-    async () => (await page.locator('.card').count()) === 2,
+    async () => (await page.locator('.scanCard').count()) === 2,
     'Filter toggle did not restore both objects',
   );
 }
@@ -196,14 +198,14 @@ async function testInterruptedRecovery(page) {
 
   await page.getByRole('button', { name: 'Réessayer', exact: true }).click();
   await eventually(
-    async () => ((await page.locator('.card').textContent()) ?? '').includes('12 €'),
+    async () => ((await page.locator('.scanCard').textContent()) ?? '').includes('12 €'),
     'Recovered scan did not complete after retry',
     20_000,
   );
 
   await page.reload();
   await eventually(
-    async () => ((await page.locator('.card').textContent()) ?? '').includes('12 €'),
+    async () => ((await page.locator('.scanCard').textContent()) ?? '').includes('12 €'),
     'Completed recovery was not persisted across reload',
   );
   assert.equal(await page.getByText('Analyse interrompue. Relance-la pour reprendre.').count(), 0);
