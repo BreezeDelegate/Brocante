@@ -1,17 +1,28 @@
 name: Release
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/package-release.sh'
+      - 'apps/web/**'
+      - 'package.json'
+      - 'package-lock.json'
   push:
     tags:
       - 'v*.*.*'
 
-permissions:
-  contents: write
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+  verify-package:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,30 +39,57 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Verify
-        run: npm run check
+      - name: Package release candidate
+        run: bash scripts/package-release.sh
 
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      - name: Upload packaged candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: brocante-release-candidate
+          path: release-out/
+          if-no-files-found: error
+          retention-days: 3
 
-      - name: Generate SBOM
-        run: npm sbom --omit=dev --sbom-format=cyclonedx --sbom-type=application > brocante-sbom.cdx.json
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Package PWA
-        run: |
-          cd apps/web/dist
-          zip -qr ../../../brocante-pwa.zip .
-          cd ../../..
-          sha256sum brocante-pwa.zip brocante-sbom.cdx.json > SHA256SUMS
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Publish release
+      - name: Install
+        run: npm ci
+
+      - name: Package tagged release
+        run: bash scripts/package-release.sh
+
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${GITHUB_REF_NAME}"
-          brocante-pwa.zip
-          brocante-sbom.cdx.json
-          SHA256SUMS
-          --verify-tag
-          --generate-notes
-          --title "Brocante ${GITHUB_REF_NAME}"
+        run: |
+          extra_flags=()
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            extra_flags+=(--prerelease)
+          fi
+          gh release create "${GITHUB_REF_NAME}" \
+            release-out/brocante-pwa.zip \
+            release-out/brocante-android-test.apk \
+            release-out/brocante-ios-xcode.zip \
+            release-out/brocante-sbom.cdx.json \
+            release-out/SHA256SUMS \
+            --verify-tag \
+            --generate-notes \
+            --title "Brocante ${GITHUB_REF_NAME}" \
+            "${extra_flags[@]}"
