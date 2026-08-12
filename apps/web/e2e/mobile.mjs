@@ -170,11 +170,22 @@ async function testInterruptedRecovery(page) {
   assert.equal(await page.getByText('Analyse interrompue. Relance-la pour reprendre.').count(), 0);
 }
 
+function mobileContextOptions(deviceName) {
+  const descriptor = devices[deviceName];
+  return {
+    userAgent: descriptor.userAgent,
+    viewport: descriptor.viewport,
+    screen: descriptor.screen,
+    deviceScaleFactor: descriptor.deviceScaleFactor,
+    isMobile: descriptor.isMobile,
+    hasTouch: descriptor.hasTouch,
+  };
+}
+
 async function runProfile(name, browserType, deviceName) {
   const browser = await browserType.launch({ headless: true });
-  const { defaultBrowserType: _defaultBrowserType, ...device } = devices[deviceName];
   const context = await browser.newContext({
-    ...device,
+    ...mobileContextOptions(deviceName),
     locale: 'fr-FR',
     serviceWorkers: 'block',
   });
@@ -221,5 +232,5 @@ try {
     new Promise((resolve) => server.once('exit', resolve)),
     delay(3_000),
   ]);
-  if (!server.killed) server.kill('SIGKILL');
+  if (server.exitCode === null) server.kill('SIGKILL');
 }
