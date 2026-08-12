@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+.env
+*.log
+README.md
+ROADMAP.md
+CONTRIBUTING.md
+SECURITY.md
+LICENSE
+apps/web/**
+!apps/web/package.json
