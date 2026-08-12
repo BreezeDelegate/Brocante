@@ -7,8 +7,7 @@ import { safeMarketplaceUrl } from './utils.js';
 
 const OAUTH_SCOPE = 'https://api.ebay.com/oauth/api_scope';
 const TOKEN_URL = 'https://api.ebay.com/identity/v1/oauth2/token';
-const SEARCH_URL =
-  'https://api.ebay.com/buy/browse/v1/item_summary/search';
+const SEARCH_URL = 'https://api.ebay.com/buy/browse/v1/item_summary/search';
 const SEARCH_FILTER = 'buyingOptions:{FIXED_PRICE},deliveryCountry:FR';
 const TOKEN_REFRESH_SAFETY_MS = 60_000;
 const MAX_RESULTS = 24;
@@ -27,21 +26,14 @@ interface CachedToken {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    Array.isArray(value)
-  ) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return undefined;
   }
   return value as Record<string, unknown>;
 }
 
 function isRequestTimeout(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.name === 'TimeoutError' || error.name === 'AbortError')
-  );
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
 }
 
 function eurPrice(value: unknown): number | undefined {
@@ -62,9 +54,7 @@ function listingFromSummary(summary: unknown): Listing | undefined {
   const amount = eurPrice(item?.price);
   const itemWebUrl = item?.itemWebUrl;
   const url =
-    typeof itemWebUrl === 'string'
-      ? safeMarketplaceUrl(itemWebUrl, 'www.ebay.fr')
-      : undefined;
+    typeof itemWebUrl === 'string' ? safeMarketplaceUrl(itemWebUrl, 'www.ebay.fr') : undefined;
 
   if (
     typeof itemId !== 'string' ||
@@ -180,10 +170,7 @@ export class EbayClient {
     return this.token.value;
   }
 
-  private async requestSearch(
-    query: string,
-    token: string,
-  ): Promise<Response> {
+  private async requestSearch(query: string, token: string): Promise<Response> {
     const url = new URL(SEARCH_URL);
     url.searchParams.set('q', query);
     url.searchParams.set('limit', '50');
@@ -235,10 +222,7 @@ export class EbayClient {
   }
 }
 
-const gate = new SerialGate(
-  config.EBAY_GAP_MS,
-  config.PROVIDER_MAX_QUEUE,
-);
+const gate = new SerialGate(config.EBAY_GAP_MS, config.PROVIDER_MAX_QUEUE);
 const client = new EbayClient({
   clientId: config.EBAY_CLIENT_ID,
   clientSecret: config.EBAY_CLIENT_SECRET,
