@@ -49,7 +49,10 @@ async function fetchWithTimeout(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+    if (
+      error instanceof Error &&
+      (error.name === 'TimeoutError' || error.name === 'AbortError')
+    ) {
       throw new Error('ebay timed out');
     }
     throw new Error('eBay request failed');
@@ -59,7 +62,7 @@ async function fetchWithTimeout(
 export class EbayClient {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
-  private token?: CachedToken;
+  private token: CachedToken | undefined;
 
   constructor(private readonly options: EbayClientOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -102,13 +105,19 @@ export class EbayClient {
     const payload = record(await readJson(response));
     const accessToken = payload?.access_token;
     const expiresIn = Number(payload?.expires_in);
-    if (typeof accessToken !== 'string' || !accessToken || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+    if (
+      typeof accessToken !== 'string' ||
+      !accessToken ||
+      !Number.isFinite(expiresIn) ||
+      expiresIn <= 0
+    ) {
       throw new Error('eBay token response invalid');
     }
 
     return {
       value: accessToken,
-      expiresAt: this.now() + Math.max(1_000, expiresIn * 1_000 - TOKEN_REFRESH_SAFETY_MS),
+      expiresAt:
+        this.now() + Math.max(1_000, expiresIn * 1_000 - TOKEN_REFRESH_SAFETY_MS),
     };
   }
 
@@ -152,12 +161,16 @@ export class EbayClient {
       const price = record(item?.price);
       const rawPrice = price?.value;
       const amount =
-        typeof rawPrice === 'string' || typeof rawPrice === 'number' ? Number(rawPrice) : Number.NaN;
+        typeof rawPrice === 'string' || typeof rawPrice === 'number'
+          ? Number(rawPrice)
+          : Number.NaN;
       const itemId = item?.itemId;
       const title = item?.title;
       const itemWebUrl = item?.itemWebUrl;
       const url =
-        typeof itemWebUrl === 'string' ? safeMarketplaceUrl(itemWebUrl, 'www.ebay.fr') : undefined;
+        typeof itemWebUrl === 'string'
+          ? safeMarketplaceUrl(itemWebUrl, 'www.ebay.fr')
+          : undefined;
 
       if (
         typeof itemId !== 'string' ||
