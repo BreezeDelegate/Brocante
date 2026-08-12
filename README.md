@@ -10,7 +10,7 @@ Prérequis : la version Node.js indiquée dans `.node-version`, npm 11 et Chromi
 
 ```bash
 npm ci
-npx playwright install chromium
+./node_modules/.bin/playwright install chromium
 npm run dev
 ```
 
@@ -22,6 +22,14 @@ Avant une PR :
 ```bash
 npm run check
 npm audit --omit=dev --audit-level=high
+```
+
+Le gate mobile E2E utilise Chromium/Pixel 5 et WebKit/iPhone 12. Pour le lancer localement après un build :
+
+```bash
+npm run build -w @brocante/web
+./node_modules/.bin/playwright install --with-deps chromium webkit
+npm run e2e -w @brocante/web
 ```
 
 La reconnaissance visuelle est optionnelle et utilise Ollama sur le serveur. Sans Ollama, le nom de l'objet peut être saisi avant l'analyse.
@@ -48,7 +56,7 @@ Pour la topologie HTTPS/reverse-proxy, le rollback et les incidents, suis `docs/
 
 ## Sécurité et supply chain
 
-CI vérifie format, lint, TypeScript, tests, build, audit des dépendances, image Docker, runtime non-root et lancement réel de Chromium sandboxé sous les mêmes restrictions de capabilities/seccomp que la configuration fournie. CodeQL tourne sur les changements et de façon planifiée. Les releases incluent des checksums et un SBOM CycloneDX.
+CI vérifie format, lint, TypeScript, tests unitaires, build, audit des dépendances, E2E mobiles Chromium/WebKit, image Docker, runtime non-root et lancement réel de Chromium sandboxé sous les mêmes restrictions de capabilities/seccomp que la configuration fournie. CodeQL tourne sur les changements et de façon planifiée. Les releases incluent des checksums et un SBOM CycloneDX.
 
 Les réglages qui ne peuvent pas vivre dans Git — protection de `main`, Dependency Graph, secret scanning/push protection, private vulnerability reporting — sont listés dans `docs/GITHUB_SETTINGS.md`.
 
