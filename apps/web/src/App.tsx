@@ -31,7 +31,7 @@ import {
   putScan,
   savePreferences,
 } from './storage';
-import type { Preferences, ProviderId, Scan } from './types';
+import type { Listing, Preferences, ProviderId, Scan } from './types';
 
 const providerNames: Record<ProviderId, string> = {
   vinted: 'Vinted',
@@ -50,6 +50,24 @@ function newScan(image: string): Scan {
   };
 }
 
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle] ?? 0;
+  return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+}
+
+function providerSummary(listings: Listing[], provider: ProviderId) {
+  const prices = listings.filter((listing) => listing.provider === provider).map((listing) => listing.price);
+  if (!prices.length) return undefined;
+  return {
+    count: prices.length,
+    minimum: Math.min(...prices),
+    median: median(prices),
+  };
+}
+
 export function App() {
   const [preferences, setPreferences] = useState<Preferences>(loadPreferences);
   const [scans, setScans] = useState<Scan[]>([]);
@@ -59,6 +77,8 @@ export function App() {
   const [cameraError, setCameraError] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const [stageById, setStageById] = useState<Record<string, string>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -91,6 +111,7 @@ export function App() {
     [filterEnabled, preferences.minimumValue, scans],
   );
   const hasProcessing = scans.some((scan) => scan.status === 'processing');
+  const batchCandidates = scans.filter(shouldProcessInBatch).length;
 
   function queuePersistence(id: string, work: () => Promise<void>): void {
     const previous = persistence.current.get(id) ?? Promise.resolve();
@@ -122,6 +143,15 @@ export function App() {
         return updated;
       }),
     );
+  }
+
+  function setStage(id: string, stage?: string): void {
+    setStageById((current) => {
+      if (stage) return { ...current, [id]: stage };
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
   }
 
   async function openCamera(): Promise<void> {
@@ -183,7 +213,7 @@ export function App() {
       patchScan(scan.id, {
         status: 'error',
         errorKind: 'configuration',
-        error: 'Active au moins une source.',
+        error: 'Active au moins une source dans les réglages.',
       });
       return false;
     }
@@ -199,24 +229,29 @@ export function App() {
 
     try {
       let label = scan.label.trim();
-      if (!label) label = await identify(preferences, scan.image);
+      if (!label) {
+        setStage(scan.id, 'Identification automatique de la photo…');
+        label = await identify(preferences, scan.image);
+      }
       if (!label) {
         patchScan(scan.id, {
-          status: 'draft',
-          errorKind: undefined,
-          error: 'Ajoute un nom ou active Ollama sur le serveur.',
+          status: 'error',
+          errorKind: 'configuration',
+          error:
+            'Identification visuelle indisponible sur ce serveur. Active Ollama pour analyser les photos sans saisie manuelle.',
         });
-        return true;
+        return false;
       }
 
       patchScan(scan.id, { label });
+      setStage(scan.id, `Recherche sur ${providers.map((provider) => providerNames[provider]).join(', ')}…`);
       const result = await search(preferences, label, providers);
       if (allProvidersFailed(result.errors, providers) && result.listings.length === 0) {
         patchScan(scan.id, {
           status: 'error',
           errorKind: 'transient',
           providerErrors: result.errors,
-          error: 'Aucune source n’a pu répondre. La file est mise en pause.',
+          error: 'Aucune source n’a pu répondre. La file est mise en pause pour éviter de marteler les sites.',
         });
         return false;
       }
@@ -239,17 +274,23 @@ export function App() {
       });
       return !shouldPauseBatch(errorKind);
     } finally {
+      setStage(scan.id);
       inFlight.current.delete(scan.id);
     }
   }
 
   async function runPending(): Promise<void> {
     if (batchRunning) return;
+    const pending = scans.filter(shouldProcessInBatch);
+    if (!pending.length) return;
+
     setBatchRunning(true);
+    setBatchProgress({ done: 0, total: pending.length });
     try {
-      for (const scan of scans.filter(shouldProcessInBatch)) {
+      for (const scan of pending) {
         if (inFlight.current.has(scan.id)) continue;
         const shouldContinue = await run(scan);
+        setBatchProgress((current) => ({ ...current, done: current.done + 1 }));
         if (!shouldContinue) break;
       }
     } finally {
@@ -294,7 +335,7 @@ export function App() {
       </header>
 
       <section className="hero">
-        <p>Photographie d'abord. Trie ce qui vaut le détour ensuite.</p>
+        <p>Photographie d’abord. Brocante identifie, compare et trie ensuite.</p>
         <div className="actions">
           <button className="primary" onClick={() => void openCamera()}>
             <Camera /> Mode rafale
@@ -303,14 +344,21 @@ export function App() {
             Importer
           </button>
           <button
-            className="secondary"
-            disabled={!scans.length || batchRunning}
+            className="secondary bulkButton"
+            disabled={!batchCandidates || batchRunning}
             onClick={() => void runPending()}
           >
             {batchRunning ? <LoaderCircle className="spin" /> : <Search />}
-            {batchRunning ? 'Analyse en cours…' : 'Analyser'}
+            {batchRunning
+              ? `Analyse ${batchProgress.done}/${batchProgress.total}`
+              : `Analyser tout${batchCandidates ? ` (${batchCandidates})` : ''}`}
           </button>
         </div>
+        {batchRunning && batchProgress.total > 0 && (
+          <div className="batchProgress" aria-live="polite">
+            <span style={{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }} />
+          </div>
+        )}
         {cameraError && <small className="cameraError">{cameraError}</small>}
         <input
           ref={fileInput}
@@ -329,83 +377,136 @@ export function App() {
         >
           <SlidersHorizontal /> ≥ {preferences.minimumValue} €
         </button>
-        <span>
-          {loadingHistory ? 'Chargement…' : `${visibleScans.length}/${scans.length} objets`}
-        </span>
+        <span>{loadingHistory ? 'Chargement…' : `${visibleScans.length}/${scans.length} objets`}</span>
       </section>
 
-      <section className="grid">
+      <section className="scanList">
         {visibleScans.map((scan) => (
-          <article className="card" key={scan.id}>
-            <img src={scan.image} alt="Objet photographié" loading="lazy" />
-            <div className="cardbody">
-              <input
-                value={scan.label}
-                maxLength={160}
-                placeholder="Nom de l’objet (optionnel)"
-                onChange={(event) => patchScan(scan.id, { label: event.target.value })}
-              />
-              {scan.status === 'processing' && (
-                <div className="state">
-                  <LoaderCircle className="spin" /> Analyse…
-                </div>
-              )}
-              {scan.estimate && (
-                <div className="price">
-                  <strong>{scan.estimate.floor.toFixed(0)} €</strong>
-                  <span>
-                    plancher · médiane {scan.estimate.median.toFixed(0)} € · {scan.estimate.count}{' '}
-                    annonces
+          <article className={`scanCard status-${scan.status}`} key={scan.id}>
+            <div className="scanPhotoWrap">
+              <img src={scan.image} alt="Objet photographié" loading="lazy" />
+              <span className="scanStatus">
+                {scan.status === 'processing'
+                  ? 'Analyse'
+                  : scan.status === 'done'
+                    ? 'Terminé'
+                    : scan.status === 'error'
+                      ? 'À vérifier'
+                      : 'En attente'}
+              </span>
+            </div>
+
+            <div className="scanContent">
+              <div className="scanTopline">
+                <div>
+                  <strong className="scanTitle">{scan.label || 'Objet à identifier'}</strong>
+                  <span className="scanSubtitle">
+                    {scan.label ? 'Nom détecté automatiquement · modifiable si besoin' : 'La photo sera identifiée automatiquement'}
                   </span>
                 </div>
+                <button
+                  className="deleteButton"
+                  onClick={() => removeScan(scan.id)}
+                  aria-label="Supprimer l'objet"
+                  disabled={scan.status === 'processing'}
+                >
+                  <Trash2 />
+                </button>
+              </div>
+
+              <details className="nameCorrection">
+                <summary>Corriger le nom de recherche</summary>
+                <input
+                  value={scan.label}
+                  maxLength={160}
+                  placeholder="Ex. Game Boy Color violette"
+                  onChange={(event) => patchScan(scan.id, { label: event.target.value })}
+                />
+              </details>
+
+              {scan.status === 'processing' && (
+                <div className="state" aria-live="polite">
+                  <LoaderCircle className="spin" /> {stageById[scan.id] ?? 'Analyse en cours…'}
+                </div>
               )}
-              {scan.error && <small className="error">{scan.error}</small>}
-              {scan.errorKind === 'item' && (
-                <small className="hint">Cet objet sera ignoré par les prochains lots.</small>
+
+              {scan.estimate && (
+                <div className="estimateSummary">
+                  <div>
+                    <span>Prix prudent</span>
+                    <strong>{scan.estimate.floor.toFixed(0)} €</strong>
+                  </div>
+                  <div>
+                    <span>Médiane</span>
+                    <strong>{scan.estimate.median.toFixed(0)} €</strong>
+                  </div>
+                  <div>
+                    <span>Annonces</span>
+                    <strong>{scan.estimate.count}</strong>
+                  </div>
+                </div>
               )}
-              {scan.errorKind === 'configuration' && (
-                <small className="hint">Corrige les réglages avant de relancer la file.</small>
+
+              {scan.status === 'done' && scan.listings.length === 0 && (
+                <div className="emptyResult">Analyse terminée : aucune annonce comparable trouvée.</div>
               )}
-              {scan.providerErrors && scan.providerErrors.length > 0 && (
+
+              {scan.listings.length > 0 && (
+                <div className="marketRows">
+                  {preferences.providerOrder.map((provider) => {
+                    const summary = providerSummary(scan.listings, provider);
+                    const error = scan.providerErrors?.find((item) => item.provider === provider);
+                    if (!summary && !error) return null;
+                    return (
+                      <div className="marketRow" key={provider}>
+                        <strong>{providerNames[provider]}</strong>
+                        {summary ? (
+                          <>
+                            <span>min {summary.minimum.toFixed(0)} €</span>
+                            <span>méd. {summary.median.toFixed(0)} €</span>
+                            <span>{summary.count} annonce{summary.count > 1 ? 's' : ''}</span>
+                          </>
+                        ) : (
+                          <span className="marketError">{error ? providerErrorLabel(error) : 'indisponible'}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {scan.error && (
+                <div className="errorPanel">
+                  <AlertTriangle />
+                  <span>{scan.error}</span>
+                </div>
+              )}
+              {scan.providerErrors && scan.providerErrors.length > 0 && scan.listings.length === 0 && (
                 <div className="warning">
                   <AlertTriangle />
                   <span>{scan.providerErrors.map(providerErrorLabel).join(' · ')}</span>
                 </div>
               )}
-              <div className="row">
+
+              <div className="scanActions">
                 <button onClick={() => void run(scan)} disabled={scan.status === 'processing'}>
-                  <Search />
+                  {scan.status === 'processing' ? <LoaderCircle className="spin" /> : <Search />}
                   {scan.status === 'error'
                     ? 'Réessayer'
                     : scan.status === 'done'
                       ? 'Actualiser'
-                      : 'Analyser'}
-                </button>
-                <button
-                  className="danger"
-                  onClick={() => removeScan(scan.id)}
-                  aria-label="Supprimer l'objet"
-                >
-                  <Trash2 />
+                      : 'Analyser cet objet'}
                 </button>
               </div>
-              {scan.listings.length > 0 && (
-                <div className="providers">
-                  {Array.from(new Set(scan.listings.map((listing) => listing.provider))).map(
-                    (provider) => (
-                      <span key={provider}>{providerNames[provider]}</span>
-                    ),
-                  )}
-                </div>
-              )}
             </div>
           </article>
         ))}
+
         {!visibleScans.length && !loadingHistory && (
           <div className="empty">
             {scans.length
-              ? 'Aucun objet ne dépasse le seuil.'
-              : 'Prends plusieurs photos à la suite : elles resteront dans la file.'}
+              ? 'Aucun objet ne dépasse le seuil actuel.'
+              : 'Prends plusieurs photos à la suite : elles resteront dans la file avant analyse.'}
           </div>
         )}
       </section>
