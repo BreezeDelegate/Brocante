@@ -8,10 +8,10 @@ import { chromium, devices, webkit } from 'playwright';
 
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE_URL = 'http://127.0.0.1:4173';
-const PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
-const PNG_IMAGE = Buffer.from(PNG_BASE64, 'base64');
-const INTERRUPTED_IMAGE = `data:image/png;base64,${PNG_BASE64}`;
+const JPEG_BASE64 =
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwAooooAKKKKACiiigAooooA/9k=';
+const JPEG_IMAGE = Buffer.from(JPEG_BASE64, 'base64');
+const INTERRUPTED_IMAGE = `data:image/jpeg;base64,${JPEG_BASE64}`;
 
 async function eventually(check, message, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
@@ -26,6 +26,22 @@ async function eventually(check, message, timeoutMs = 10_000) {
   }
   if (lastError) throw lastError;
   throw new Error(message);
+}
+
+function annotationValue(value) {
+  return String(value).replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+}
+
+async function runStage(profile, stage, action) {
+  try {
+    await action();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `::error title=${annotationValue(`Mobile E2E ${profile} — ${stage}`)}::${annotationValue(message)}`,
+    );
+    throw error;
+  }
 }
 
 async function waitForServer() {
@@ -121,8 +137,8 @@ async function testBatchAndFilter(page) {
   await installApiMock(page);
   await page.goto(BASE_URL);
   await page.locator('input[type="file"]').setInputFiles([
-    { name: 'objet-a.png', mimeType: 'image/png', buffer: PNG_IMAGE },
-    { name: 'objet-b.png', mimeType: 'image/png', buffer: PNG_IMAGE },
+    { name: 'objet-a.jpg', mimeType: 'image/jpeg', buffer: JPEG_IMAGE },
+    { name: 'objet-b.jpg', mimeType: 'image/jpeg', buffer: JPEG_IMAGE },
   ]);
 
   const cards = page.locator('.card');
@@ -140,7 +156,10 @@ async function testBatchAndFilter(page) {
   assert.match((await page.locator('.card').textContent()) ?? '', /12 €/);
 
   await page.locator('.chip').click();
-  await eventually(async () => (await page.locator('.card').count()) === 2, 'Filter toggle did not restore both objects');
+  await eventually(
+    async () => (await page.locator('.card').count()) === 2,
+    'Filter toggle did not restore both objects',
+  );
 }
 
 async function testInterruptedRecovery(page) {
@@ -181,40 +200,34 @@ function mobileContextOptions(deviceName) {
   };
 }
 
-async function runProfile(name, browserType, deviceName, launchOptions = {}) {
-  const browser = await browserType.launch({ headless: true, ...launchOptions });
+async function withMobilePage(browser, deviceName, action) {
   const context = await browser.newContext({
     ...mobileContextOptions(deviceName),
     locale: 'fr-FR',
     serviceWorkers: 'block',
   });
-
   try {
-    console.log(`\n[e2e] ${name}: batch + filter`);
-    const batchPage = await context.newPage();
-    await testBatchAndFilter(batchPage);
-    await batchPage.close();
-
-    await context.clearCookies();
-    const recoveryPage = await context.newPage();
-    await recoveryPage.goto(BASE_URL);
-    await recoveryPage.evaluate(async () => {
-      localStorage.clear();
-      await new Promise((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('brocante');
-        request.addEventListener('success', () => resolve());
-        request.addEventListener('blocked', () => resolve());
-        request.addEventListener('error', () => reject(request.error));
-      });
-    });
-    await recoveryPage.reload();
-
-    console.log(`[e2e] ${name}: interrupted recovery`);
-    await testInterruptedRecovery(recoveryPage);
-    await recoveryPage.close();
-    console.log(`[e2e] ${name}: OK`);
+    const page = await context.newPage();
+    await action(page);
   } finally {
     await context.close();
+  }
+}
+
+async function runProfile(name, browserType, deviceName, launchOptions = {}) {
+  const browser = await browserType.launch({ headless: true, ...launchOptions });
+  try {
+    console.log(`\n[e2e] ${name}: batch + filter`);
+    await runStage(name, 'batch + filter', () =>
+      withMobilePage(browser, deviceName, testBatchAndFilter),
+    );
+
+    console.log(`[e2e] ${name}: interrupted recovery`);
+    await runStage(name, 'interrupted recovery', () =>
+      withMobilePage(browser, deviceName, testInterruptedRecovery),
+    );
+    console.log(`[e2e] ${name}: OK`);
+  } finally {
     await browser.close();
   }
 }
