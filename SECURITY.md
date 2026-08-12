@@ -1,6 +1,6 @@
 # Security
 
-Security fixes are supported on `main` and the latest release. The engineering threat model is maintained in `docs/THREAT_MODEL.md`; deployment and incident procedures are in `docs/OPERATIONS.md`.
+Security fixes are supported on `main` and the latest release. The engineering threat model is maintained in `docs/THREAT_MODEL.md`; deployment and incident procedures are in `docs/OPERATIONS.md` and native-client procedures are in `docs/NATIVE_CLIENTS.md`.
 
 ## Reporting a vulnerability
 
@@ -15,7 +15,7 @@ The API is designed to sit behind HTTPS on a reverse proxy. In production:
 - keep host port `8787` bound to localhost;
 - set a long random `API_TOKEN` unless access is already enforced by a trusted private network or identity-aware proxy;
 - set `TRUST_PROXY=1` only when exactly one trusted reverse proxy is in front of the API;
-- set `CORS_ORIGINS` only when the PWA and API intentionally use different origins;
+- set `CORS_ORIGINS` only for intentional cross-origin clients; native wrappers use the exact Capacitor origins documented in `docs/NATIVE_CLIENTS.md`;
 - keep Ollama private and unreachable from the public internet;
 - run the supplied container as non-root and read-only;
 - keep `no-new-privileges`, `cap_drop: ALL`, the PID limit and the supplied seccomp profile enabled;
@@ -30,11 +30,19 @@ The browser URL policy is defense in depth, not a replacement for network policy
 
 ## Application privacy boundary
 
-The production PWA should reverse-proxy `/api` so its CSP can keep application browser connections same-origin. There are no analytics or third-party application scripts by default.
+The production PWA should reverse-proxy `/api` so its application traffic remains same-origin. Native Capacitor wrappers cannot use that same-origin path, so they require an explicit HTTPS API base configured by the user. Brocante does not enable Android cleartext traffic or weaken Apple App Transport Security for native production use.
+
+The PWA CSP permits outbound `connect-src` to HTTPS so a generic native package can reach the explicitly configured API. This is broader than the same-origin PWA path, so the application keeps third-party scripts disabled and validates the native API base before requests. A script-injection vulnerability would still be security-sensitive and must be treated as capable of reading local configuration and making allowed HTTPS requests.
 
 Photos and scan history stay on the device unless the user explicitly requests analysis. The API has no durable user database. Request logging excludes bodies, search terms, authorization data and image payloads.
 
-The browser token is a shared secret for this small private deployment, not a full identity system. Brocante may store it on the device to preserve configuration, so compromise of the application origin can expose it. Use HTTPS, a trusted origin and no third-party scripts.
+The browser/native token is a shared secret for this small private deployment, not a full identity system. Brocante may store it on the device to preserve configuration, so compromise of the application origin or device can expose it. Use HTTPS, a trusted API origin and no third-party scripts.
+
+## Native package permissions and signing
+
+The Android wrapper requests only internet and camera access. The iOS wrapper declares a camera usage description. Camera access is requested by the WebView only when the user enters camera mode.
+
+The CI-produced Android debug APK is a test artifact, not a production-signed release. Stable Android signing keys and Apple distribution credentials must remain outside the repository and logs. TestFlight/App Store or other signed iOS distribution is not produced until a controlled signing strategy is configured.
 
 ## Untrusted external content
 
@@ -44,6 +52,6 @@ Brocante intentionally does not implement CAPTCHA bypasses, fingerprint spoofing
 
 ## Supply chain
 
-Dependency installs are lockfile-driven with `npm ci`, npm lifecycle scripts are explicitly allowlisted, Actions are pinned to immutable SHAs, CodeQL runs on changes/schedule and releases include checksums plus a CycloneDX SBOM.
+Dependency installs are lockfile-driven with `npm ci`, npm lifecycle scripts are explicitly allowlisted, Actions are pinned to immutable SHAs, CodeQL runs on changes/schedule and releases include checksums plus a CycloneDX SBOM. Native Capacitor dependencies are exact-version pinned; CI compiles both Android and iOS projects from the committed lockfile.
 
 Repository-level controls such as Dependency Graph, private vulnerability reporting, secret scanning/push protection and branch rules are documented in `docs/GITHUB_SETTINGS.md` because they must be enabled in GitHub settings.
