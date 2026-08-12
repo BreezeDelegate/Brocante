@@ -35,16 +35,12 @@ jobs:
 
       - name: Configure Capacitor
         run: |
-          cat > apps/web/capacitor.config.ts <<'EOF'
-          import type { CapacitorConfig } from '@capacitor/cli';
-
-          const config: CapacitorConfig = {
-            appId: 'com.breezedelegate.brocante',
-            appName: 'Brocante',
-            webDir: 'dist',
-          };
-
-          export default config;
+          cat > apps/web/capacitor.config.json <<'EOF'
+          {
+            "appId": "com.breezedelegate.brocante",
+            "appName": "Brocante",
+            "webDir": "dist"
+          }
           EOF
 
       - name: Build web bundle
@@ -63,7 +59,7 @@ jobs:
             package.json \
             package-lock.json \
             apps/web/package.json \
-            apps/web/capacitor.config.ts \
+            apps/web/capacitor.config.json \
             apps/web/android \
             apps/web/ios
 
