@@ -35,7 +35,7 @@ Controls: localhost-bound host port, reverse proxy/TLS, bearer token by default 
 
 Goals: escape browser isolation, reach the host/LAN/Ollama, force downloads/background activity, redirect main navigation or exhaust resources.
 
-Controls: non-root runtime, Chromium sandbox, Playwright seccomp profile, read-only container, dropped Linux capabilities, `no-new-privileges`, bounded pids/shared memory, downloads disabled, service workers blocked, media/images/fonts blocked, exact main-navigation host allowlist and browser URL policy rejecting obvious private/local targets.
+Controls: non-root runtime, Chromium sandbox, Playwright seccomp profile, read-only container, `cap_drop: ALL` followed by the single `SYS_CHROOT` capability required for Chromium's filesystem sandbox step, `no-new-privileges`, bounded pids/shared memory, downloads disabled, service workers blocked, media/images/fonts blocked, exact main-navigation host allowlist and browser URL policy rejecting obvious private/local targets.
 
 Residual risk: hostname policy alone cannot cryptographically eliminate DNS rebinding or every browser/runtime vulnerability. High-assurance deployments should additionally apply host/cloud firewall egress policy, isolate the browser workload/network namespace or place it in a dedicated VM/container service with only required internet access.
 
@@ -66,6 +66,7 @@ Controls: secure defaults, production token requirement, localhost Compose port 
 - Public host port remains bound to loopback in the supplied Compose setup.
 - Ollama remains private.
 - Browser execution never requires privileged container mode or `SYS_ADMIN` in production.
+- Container capabilities follow a drop-all baseline with only `SYS_CHROOT` re-added for the Chromium sandbox.
 - Main browser navigation remains host-allowlisted.
 - Network-facing operations remain bounded by size, time and queue limits.
 - Marketplace blocking/DOM changes cause provider failure, not anti-abuse bypasses.
