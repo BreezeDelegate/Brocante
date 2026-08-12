@@ -9,6 +9,12 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+const timeoutFetch: typeof fetch = async () => {
+  const error = new Error('request aborted');
+  error.name = 'TimeoutError';
+  throw error;
+};
+
 describe('EbayClient', () => {
   it('uses an application token and returns only safe EUR fixed-price comparables', async () => {
     const calls: Array<{ input: string; init: RequestInit | undefined }> = [];
@@ -149,16 +155,11 @@ describe('EbayClient', () => {
   });
 
   it('normalizes network timeouts for the provider error boundary', async () => {
-    const fetchImpl: typeof fetch = async () => {
-      const error = new Error('request aborted');
-      error.name = 'TimeoutError';
-      throw error;
-    };
     const client = new EbayClient({
       clientId: 'client',
       clientSecret: 'secret',
       timeoutMs: 1_000,
-      fetchImpl,
+      fetchImpl: timeoutFetch,
     });
 
     await expect(client.search('objet')).rejects.toThrow('ebay timed out');

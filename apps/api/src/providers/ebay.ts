@@ -97,8 +97,10 @@ async function fetchWithTimeout(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    if (isRequestTimeout(error)) throw new Error('ebay timed out');
-    throw new Error('eBay request failed');
+    if (isRequestTimeout(error)) {
+      throw new Error('ebay timed out', { cause: error });
+    }
+    throw new Error('eBay request failed', { cause: error });
   }
 }
 
