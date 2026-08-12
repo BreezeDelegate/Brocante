@@ -28,7 +28,7 @@ La reconnaissance visuelle est optionnelle et utilise Ollama sur le serveur. San
 
 ## Déploiement
 
-Le frontend est statique. L'API est prévue pour un VPS derrière HTTPS ; le `docker-compose.yml` ne l'expose que sur `127.0.0.1`, exécute l'API en non-root/read-only, retire les capabilities Linux, interdit l'escalade de privilèges et conserve le sandbox Chromium grâce au profil seccomp fourni.
+Le frontend est statique. L'API est prévue pour un VPS derrière HTTPS ; le `docker-compose.yml` ne l'expose que sur `127.0.0.1`, exécute l'API en non-root/read-only, retire toutes les capabilities Linux puis ne réintroduit que `SYS_CHROOT` nécessaire au sandbox Chromium, et interdit l'escalade de privilèges. Le profil seccomp fourni garde le sandbox navigateur actif sans `SYS_ADMIN` ni mode privilégié.
 
 Copie `.env.example` vers `.env`, configure au minimum un `API_TOKEN` en production, puis :
 
@@ -44,7 +44,7 @@ Vinted et Leboncoin sont des connecteurs web volontairement conservateurs : ils 
 
 ## Sécurité et supply chain
 
-CI vérifie format, lint, TypeScript, tests, build, audit des dépendances, image Docker, runtime non-root et lancement réel de Chromium sandboxé. CodeQL tourne sur les changements et de façon planifiée. Les releases incluent des checksums et un SBOM CycloneDX.
+CI vérifie format, lint, TypeScript, tests, build, audit des dépendances, image Docker, runtime non-root et lancement réel de Chromium sandboxé sous les mêmes restrictions de capabilities/seccomp que la configuration fournie. CodeQL tourne sur les changements et de façon planifiée. Les releases incluent des checksums et un SBOM CycloneDX.
 
 Les réglages qui ne peuvent pas vivre dans Git — protection de `main`, Dependency Graph, secret scanning/push protection, private vulnerability reporting — sont listés dans `docs/GITHUB_SETTINGS.md`.
 
