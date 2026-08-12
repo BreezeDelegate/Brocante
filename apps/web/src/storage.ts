@@ -1,3 +1,4 @@
+import { interruptedScan } from './analysis';
 import type { Preferences, ProviderId, Scan } from './types';
 
 const PREFERENCES_KEY = 'brocante.preferences.v2';
@@ -92,7 +93,10 @@ async function transaction<T>(
 export async function loadScans(): Promise<Scan[]> {
   try {
     const scans = await transaction<Scan[]>('readonly', (store) => store.getAll());
-    return scans.sort((a, b) => b.createdAt - a.createdAt).slice(0, MAX_STORED_SCANS);
+    const recovered = scans.map(interruptedScan);
+    const changed = recovered.filter((scan, index) => scan !== scans[index]);
+    if (changed.length > 0) await Promise.all(changed.map(putScan));
+    return recovered.sort((a, b) => b.createdAt - a.createdAt).slice(0, MAX_STORED_SCANS);
   } catch {
     return [];
   }

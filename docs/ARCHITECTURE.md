@@ -44,7 +44,9 @@ The client compresses an image, sends a bounded data URL to `/identify`, the API
 
 The client submits a bounded query and an explicit provider list to `/search`. The search service checks its TTL cache and invokes selected providers with conservative pacing, bounded queues and provider timeouts. Each provider owns its marketplace-specific DOM parsing.
 
-Provider failures are returned as stable categories rather than leaking internals.
+Provider failures are returned as stable categories rather than leaking internals. The PWA keeps successful results when only some providers fail and displays those failed sources explicitly. If the API cannot be reached, authentication/rate limiting blocks the request, or every requested provider fails, the batch pauses after the current item instead of repeatedly failing the rest of the local queue.
+
+Per-scan IndexedDB writes are serialized so a slower stale write cannot overwrite a newer scan state or resurrect an item after deletion. A scan left in `processing` by a browser/app interruption is recovered as a retryable error on the next load and that recovery is persisted before normal queue processing resumes.
 
 ## Security boundaries
 
@@ -66,6 +68,8 @@ The container is intentionally not privileged. Its filesystem is read-only excep
 
 ## Failure model
 
-Marketplace DOM changes or blocking are expected operational failures, not reasons to weaken security. Provider errors should degrade the affected source while preserving the API. Ollama can be absent; users may name items manually. Process-local cache loss is harmless. If the browser cannot launch safely, the provider should fail rather than running with elevated container privileges.
+Marketplace DOM changes or blocking are expected operational failures, not reasons to weaken security. Provider errors degrade only the affected source when usable results remain. A failure affecting the whole request path pauses batch processing so the user can retry without multiplying requests or replacing successful prior items with a chain of identical failures.
+
+Local processing state is recoverable: interrupted `processing` records become retryable errors after reload rather than remaining permanently busy. Ollama can be absent; users may name items manually. Process-local cache loss is harmless. If the browser cannot launch safely, the provider should fail rather than running with elevated container privileges.
 
 Durable changes to these boundaries or invariants require an ADR under `docs/decisions/`.
