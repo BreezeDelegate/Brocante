@@ -8,11 +8,10 @@ import { chromium, devices, webkit } from 'playwright';
 
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE_URL = 'http://127.0.0.1:4173';
-const SVG_IMAGE = Buffer.from(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="gray"/></svg>',
-);
-const INTERRUPTED_IMAGE =
-  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32"%3E%3Crect width="32" height="32" fill="gray"/%3E%3C/svg%3E';
+const PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const PNG_IMAGE = Buffer.from(PNG_BASE64, 'base64');
+const INTERRUPTED_IMAGE = `data:image/png;base64,${PNG_BASE64}`;
 
 async function eventually(check, message, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
@@ -122,8 +121,8 @@ async function testBatchAndFilter(page) {
   await installApiMock(page);
   await page.goto(BASE_URL);
   await page.locator('input[type="file"]').setInputFiles([
-    { name: 'objet-a.svg', mimeType: 'image/svg+xml', buffer: SVG_IMAGE },
-    { name: 'objet-b.svg', mimeType: 'image/svg+xml', buffer: SVG_IMAGE },
+    { name: 'objet-a.png', mimeType: 'image/png', buffer: PNG_IMAGE },
+    { name: 'objet-b.png', mimeType: 'image/png', buffer: PNG_IMAGE },
   ]);
 
   const cards = page.locator('.card');
