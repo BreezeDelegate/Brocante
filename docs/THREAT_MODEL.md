@@ -11,17 +11,20 @@ This document records the security assumptions and residual risks that matter wh
 - Private Ollama endpoint and model service
 - Browser process/container boundary
 - Marketplace queries and parsed results
+- Native Android/iOS package integrity and future signing credentials
 - Source repository, lockfile, CI credentials and release artifacts
 
 ## Trust boundaries
 
 1. Mobile browser/PWA to reverse proxy/API
-2. Public reverse proxy to the local API port
-3. API process to Playwright/Chromium
-4. Chromium to untrusted marketplace pages and their subresources
-5. API process to private Ollama
-6. API process to external HTTPS provider APIs such as eBay OAuth/Browse
-7. Repository source to npm/Docker/GitHub Actions supply chain
+2. Capacitor Android/iOS WebView to an explicitly configured external HTTPS API
+3. Public reverse proxy to the local API port
+4. API process to Playwright/Chromium
+5. Chromium to untrusted marketplace pages and their subresources
+6. API process to private Ollama
+7. API process to external HTTPS provider APIs such as eBay OAuth/Browse
+8. Repository source to npm/Gradle/Swift Package Manager/Docker/GitHub Actions supply chains
+9. Release pipeline to Android/iOS signing and distribution systems
 
 Anything crossing a boundary is untrusted unless explicitly validated or authenticated.
 
@@ -31,7 +34,15 @@ Anything crossing a boundary is untrusted unless explicitly validated or authent
 
 Goals: abuse CPU/browser capacity, submit oversized payloads, enumerate internals, bypass authentication or consume provider quotas.
 
-Controls: localhost-bound host port, reverse proxy/TLS, bearer token by default in production, CORS policy, JSON size limit, rate limit, bounded provider queues, input schemas, timeouts and generic errors.
+Controls: localhost-bound host port, reverse proxy/TLS, bearer token by default in production, exact CORS policy, JSON size limit, rate limit, bounded provider queues, input schemas, timeouts and generic errors.
+
+### Malicious or compromised native API configuration
+
+Goals/effects: send photos, search queries or the API bearer token to an unintended server; downgrade traffic to cleartext; abuse a malformed URL to redirect requests.
+
+Controls: native clients start without a guessed API endpoint; the user must configure an explicit URL; native mode rejects non-HTTPS URLs plus credentials, query parameters and fragments in the API base; Android cleartext traffic and Apple transport-security exceptions are not enabled; the server uses an exact CORS allowlist for Capacitor origins.
+
+Residual risk: a user can intentionally configure an HTTPS server they do not control, and device/application compromise can expose locally stored configuration. The PWA/native CSP permits HTTPS connections for the generic native deployment, so script injection remains high impact even though third-party application scripts are not used.
 
 ### Malicious or compromised marketplace page
 
@@ -59,23 +70,32 @@ Controls: model output is treated as untrusted advisory text, bounded before use
 
 Goals: execute code during install/build, steal credentials or modify artifacts.
 
-Controls: committed npm lockfile, `npm ci`, explicit lifecycle-script allowlist, production dependency audit, CodeQL, Dependabot, immutable action SHAs, least-privilege workflow permissions, release checksums and SBOM.
+Controls: committed npm lockfile, `npm ci`, exact Capacitor versions, explicit lifecycle-script allowlist, production dependency audit, CodeQL, Dependabot, immutable action SHAs, least-privilege workflow permissions, native Android/iOS compile gates, release checksums and SBOM.
 
-Residual risk: upstream package registries and base images remain external trust dependencies. Critical dependency/base-image updates should be treated as high-risk maintenance and reviewed promptly.
+Residual risk: npm, Gradle/Maven, Swift Package Manager registries and base images remain external trust dependencies. Critical dependency/base-image updates should be treated as high-risk maintenance and reviewed promptly.
+
+### Package signing/distribution compromise
+
+Goals: publish a modified APK/IPA, steal signing credentials or make an untrusted build appear official.
+
+Controls: the current CI APK is explicitly debug-signed and test-only; no stable signing secrets are committed. Stable Android/iOS distribution remains blocked until a documented external-secret/signing process is implemented. Release artifacts receive checksums and an SBOM.
 
 ### Operator/configuration error
 
-Goals/effects: accidental public API/Ollama exposure, trusting spoofed forwarding headers, leaking a token or provider credential, partially configuring eBay credentials or disabling authentication.
+Goals/effects: accidental public API/Ollama exposure, trusting spoofed forwarding headers, leaking a token or provider credential, partially configuring eBay credentials, misconfiguring native CORS or disabling authentication.
 
-Controls: secure defaults, production token requirement, paired eBay credential validation, localhost Compose port binding, explicit `TRUST_PROXY`, `.env.example`, deployment checklist and incident/rollback runbook.
+Controls: secure defaults, production token requirement, paired eBay credential validation, localhost Compose port binding, explicit `TRUST_PROXY`, exact `CORS_ORIGINS`, `.env.example`, deployment checklist and incident/rollback runbook.
 
 ## Security invariants
 
 - No secrets or user photos in Git history, logs or releases.
 - Production API authentication is enabled unless an explicit trusted access layer replaces it.
+- Native production API traffic uses HTTPS; no generic cleartext/ATS bypass is added.
+- Native CORS remains an exact allowlist, never a wildcard convenience setting.
+- Stable Android/iOS signing secrets remain outside the repository and logs.
 - Public host port remains bound to loopback in the supplied Compose setup.
 - Ollama remains private.
-- Provider credentials and application tokens remain server-side and are never returned to the PWA.
+- Provider credentials and application tokens remain server-side and are never returned to the client.
 - Browser execution never requires privileged container mode or `SYS_ADMIN` in production.
 - Container capabilities follow a drop-all baseline with only `SYS_CHROOT` re-added for the Chromium sandbox.
 - Main browser navigation remains host-allowlisted.
@@ -84,12 +104,12 @@ Controls: secure defaults, production token requirement, paired eBay credential 
 
 ## Privacy properties
 
-Captured photos and scan history live in browser storage. The API has no durable user database. An image is transmitted only when analysis is requested. Logs contain request metadata only. There are no analytics or third-party application scripts by default.
+Captured photos and scan history live in local browser/WebView storage. The API has no durable user database. An image is transmitted only when analysis is requested. Logs contain request metadata only. There are no analytics or third-party application scripts by default.
 
-The optional API token stored by the PWA is a shared deployment secret, not per-user identity. A compromise of the application origin can expose it; use a trusted same-origin deployment, strong CSP and no third-party scripts.
+The optional API token stored by the PWA/native client is a shared deployment secret, not per-user identity. A compromise of the application origin or device can expose it; use a trusted HTTPS API, strong CSP and no third-party scripts.
 
-Marketplace search queries necessarily leave the API for the selected provider. eBay OAuth credentials are not search data and are never sent to the PWA; the client secret is sent only to eBay's token endpoint over HTTPS as required by the client-credentials flow.
+Marketplace search queries necessarily leave the API for the selected provider. eBay OAuth credentials are not search data and are never sent to the client; the client secret is sent only to eBay's token endpoint over HTTPS as required by the client-credentials flow.
 
 ## Review triggers
 
-Update this threat model when adding authentication/identity, server persistence, new providers, browser capabilities, file uploads/downloads, third-party scripts/analytics, new outbound services, cloud metadata access, background workers, public APIs or a materially different deployment topology.
+Update this threat model when adding authentication/identity, server persistence, new providers, browser/native capabilities, file uploads/downloads, third-party scripts/analytics, new outbound services, cloud metadata access, background workers, public APIs, signing/distribution credentials or a materially different deployment topology.
