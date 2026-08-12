@@ -181,8 +181,8 @@ function mobileContextOptions(deviceName) {
   };
 }
 
-async function runProfile(name, browserType, deviceName) {
-  const browser = await browserType.launch({ headless: true });
+async function runProfile(name, browserType, deviceName, launchOptions = {}) {
+  const browser = await browserType.launch({ headless: true, ...launchOptions });
   const context = await browser.newContext({
     ...mobileContextOptions(deviceName),
     locale: 'fr-FR',
@@ -222,7 +222,7 @@ async function runProfile(name, browserType, deviceName) {
 const server = startServer();
 try {
   await waitForServer();
-  await runProfile('Mobile Chromium / Pixel 5', chromium, 'Pixel 5');
+  await runProfile('Mobile Chromium / Pixel 5', chromium, 'Pixel 5', { channel: 'chromium' });
   await runProfile('Mobile WebKit / iPhone 12', webkit, 'iPhone 12');
   console.log('\n[e2e] all mobile profiles passed');
 } finally {
