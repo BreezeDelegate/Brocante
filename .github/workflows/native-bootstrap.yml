@@ -1,0 +1,76 @@
+name: Native bootstrap
+
+on:
+  push:
+    branches:
+      - agent/native-packaging
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install existing dependencies
+        run: npm ci
+
+      - name: Add pinned Capacitor dependencies
+        run: |
+          npm install -w @brocante/web --save-exact @capacitor/core@8.4.2 @capacitor/android@8.4.2 @capacitor/ios@8.4.2
+          npm install -w @brocante/web --save-dev --save-exact @capacitor/cli@8.4.2
+
+      - name: Configure Capacitor
+        run: |
+          cat > apps/web/capacitor.config.ts <<'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
+
+          const config: CapacitorConfig = {
+            appId: 'com.breezedelegate.brocante',
+            appName: 'Brocante',
+            webDir: 'dist',
+          };
+
+          export default config;
+          EOF
+
+      - name: Build web bundle
+        run: npm run build -w @brocante/web
+
+      - name: Generate native projects
+        working-directory: apps/web
+        run: |
+          npx cap add android
+          npx cap add ios
+          npx cap sync
+
+      - name: Package generated sources
+        run: |
+          tar -czf native-bootstrap.tgz \
+            package.json \
+            package-lock.json \
+            apps/web/package.json \
+            apps/web/capacitor.config.ts \
+            apps/web/android \
+            apps/web/ios
+
+      - name: Upload generated sources
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-bootstrap
+          path: native-bootstrap.tgz
+          if-no-files-found: error
+          retention-days: 1
