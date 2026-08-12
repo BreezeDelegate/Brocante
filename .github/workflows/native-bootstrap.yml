@@ -11,7 +11,7 @@ permissions:
 jobs:
   bootstrap:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,8 +53,26 @@ jobs:
           npx cap add ios
           npx cap sync
 
+      - name: Build Android debug APK
+        working-directory: apps/web/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Build iOS simulator app
+        working-directory: apps/web/ios
+        run: >-
+          xcodebuild
+          -project App/App.xcodeproj
+          -scheme App
+          -configuration Debug
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath build
+          CODE_SIGNING_ALLOWED=NO
+          build
+
       - name: Package generated sources
         run: |
+          cp apps/web/android/app/build/outputs/apk/debug/app-debug.apk brocante-android-debug.apk
           tar -czf native-bootstrap.tgz \
             package.json \
             package-lock.json \
@@ -63,10 +81,12 @@ jobs:
             apps/web/android \
             apps/web/ios
 
-      - name: Upload generated sources
+      - name: Upload generated sources and APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-bootstrap
-          path: native-bootstrap.tgz
+          path: |
+            native-bootstrap.tgz
+            brocante-android-debug.apk
           if-no-files-found: error
           retention-days: 1
