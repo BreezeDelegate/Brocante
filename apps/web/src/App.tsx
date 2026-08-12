@@ -83,7 +83,10 @@ export function App() {
   const visibleScans = useMemo(
     () =>
       scans.filter(
-        (scan) => !filterEnabled || (scan.estimate?.floor ?? 0) >= preferences.minimumValue,
+        (scan) =>
+          !filterEnabled ||
+          scan.status !== 'done' ||
+          (scan.estimate?.floor ?? 0) >= preferences.minimumValue,
       ),
     [filterEnabled, preferences.minimumValue, scans],
   );

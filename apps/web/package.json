@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "build": "tsc -b && vite build",
     "test": "vitest run",
+    "e2e": "node e2e/mobile.mjs",
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
