@@ -61,7 +61,8 @@ function ipv6Hextets(hostname: string): number[] | undefined {
     const parts = ipv4Parts(ipv4Tail);
     if (!parts) return undefined;
     const [a, b, c, d] = parts;
-    value = `${value.slice(0, lastColon)}:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+    value =
+      `${value.slice(0, lastColon)}:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
   }
 
   const halves = value.split('::');
@@ -95,9 +96,7 @@ function isPrivateIpv6(hostname: string): boolean {
   if (ipv4Mapped) {
     const high = parts[6] ?? 0;
     const low = parts[7] ?? 0;
-    return isPrivateIpv4(
-      `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`,
-    );
+    return isPrivateIpv4(`${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`);
   }
 
   return allZero || loopback || uniqueLocal || linkLocal || multicast;
