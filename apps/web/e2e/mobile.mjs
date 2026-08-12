@@ -7,9 +7,12 @@ import path from 'node:path';
 import { chromium, devices, webkit } from 'playwright';
 
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = path.resolve(WEB_ROOT, '../..');
+const VITE_CLI = path.join(REPO_ROOT, 'node_modules/vite/bin/vite.js');
 const BASE_URL = 'http://127.0.0.1:4173';
+const STAGE_TIMEOUT_MS = 45_000;
 const JPEG_BASE64 =
-  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwAooooAKKKKACiiigAooooA/9k=';
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwAooooAKKKKACiiigAooooA/9k=';
 const JPEG_IMAGE = Buffer.from(JPEG_BASE64, 'base64');
 const INTERRUPTED_IMAGE = `data:image/jpeg;base64,${JPEG_BASE64}`;
 
@@ -34,7 +37,12 @@ function annotationValue(value) {
 
 async function runStage(profile, stage, action) {
   try {
-    await action();
+    await Promise.race([
+      action(),
+      delay(STAGE_TIMEOUT_MS).then(() => {
+        throw new Error(`${stage} exceeded ${STAGE_TIMEOUT_MS / 1000}s`);
+      }),
+    ]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(
@@ -56,12 +64,15 @@ async function waitForServer() {
 }
 
 function startServer() {
-  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const server = spawn(command, ['run', 'preview'], {
-    cwd: WEB_ROOT,
-    env: { ...process.env, CI: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const server = spawn(
+    process.execPath,
+    [VITE_CLI, 'preview', '--host', '127.0.0.1', '--port', '4173', '--strictPort'],
+    {
+      cwd: WEB_ROOT,
+      env: { ...process.env, CI: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   server.stdout.on('data', (chunk) => process.stdout.write(`[vite] ${chunk}`));
   server.stderr.on('data', (chunk) => process.stderr.write(`[vite] ${chunk}`));
   return server;
