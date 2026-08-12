@@ -1,0 +1,39 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=.docker/seccomp_profile.json
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_CHROOT
+    tmpfs:
+      - /tmp:rw,nosuid,size=256m
+    shm_size: 256mb
+    pids_limit: 256
+    stop_grace_period: 15s
+    environment:
+      PORT: 8787
+      API_TOKEN: ${API_TOKEN:-}
+      ALLOW_UNAUTHENTICATED: ${ALLOW_UNAUTHENTICATED:-0}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      JSON_LIMIT: ${JSON_LIMIT:-8mb}
+      REQUESTS_PER_MINUTE: ${REQUESTS_PER_MINUTE:-90}
+      IDENTIFY_TIMEOUT_MS: ${IDENTIFY_TIMEOUT_MS:-45000}
+      PROVIDER_TIMEOUT_MS: ${PROVIDER_TIMEOUT_MS:-35000}
+      PROVIDER_MAX_QUEUE: ${PROVIDER_MAX_QUEUE:-20}
+      CACHE_TTL_MS: ${CACHE_TTL_MS:-900000}
+      CACHE_MAX_ENTRIES: ${CACHE_MAX_ENTRIES:-500}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5vl:3b}
+      VINTED_GAP_MS: ${VINTED_GAP_MS:-2500}
+      LEBONCOIN_GAP_MS: ${LEBONCOIN_GAP_MS:-3000}
+    ports:
+      - '127.0.0.1:8787:8787'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'

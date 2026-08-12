@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Verify
+        run: npm run check
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          load: true
+          push: false
+          tags: brocante:ci
+
+      - name: Start hardened runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d \
+            --name brocante-ci \
+            --init \
+            --read-only \
+            --security-opt no-new-privileges:true \
+            --security-opt "seccomp=${GITHUB_WORKSPACE}/.docker/seccomp_profile.json" \
+            --cap-drop ALL \
+            --cap-add SYS_CHROOT \
+            --pids-limit 256 \
+            --tmpfs /tmp:rw,nosuid,size=256m \
+            --shm-size=256m \
+            -e API_TOKEN=ci-only-token-0123456789abcdef \
+            -p 127.0.0.1:18787:8787 \
+            brocante:ci
+
+      - name: Verify API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18787/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'API did not become healthy' >&2
+          exit 1
+
+      - name: Verify non-root runtime
+        run: test "$(docker exec brocante-ci id -u)" != "0"
+
+      - name: Verify Chromium sandbox
+        run: >-
+          docker exec brocante-ci node --input-type=module -e
+          "import { chromium } from 'playwright'; const browser = await chromium.launch({ headless: true, chromiumSandbox: true }); await browser.close();"
+
+      - name: Show runtime logs
+        if: always()
+        run: docker logs brocante-ci 2>&1 || true
+
+      - name: Stop runtime
+        if: always()
+        run: docker rm -f brocante-ci 2>/dev/null || true

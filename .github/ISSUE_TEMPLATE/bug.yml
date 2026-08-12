@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a reproducible Brocante defect
+title: '[Bug] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API tokens, personal photos, production data or marketplace session material. Report exploitable security issues privately.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - PWA / camera / local storage
+        - API
+        - Vinted provider
+        - Leboncoin provider
+        - Ollama identification
+        - Docker / deployment
+        - CI / release
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest safe reproduction.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0 or commit SHA
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser/device, OS, deployment mode and relevant non-secret configuration.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Remove secrets, request bodies, photos, search terms and authorization data.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed secrets, personal photos, production data and marketplace session material.
+          required: true
+        - label: This is not an exploitable vulnerability that should be reported privately.
+          required: true
