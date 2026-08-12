@@ -20,11 +20,18 @@ function normalizeHostname(hostname: string): string {
   return hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '').replace(/\.$/, '');
 }
 
-function isPrivateIpv4(hostname: string): boolean {
+function ipv4Parts(hostname: string): [number, number, number, number] | undefined {
+  if (isIP(hostname) !== 4) return undefined;
   const octets = hostname.split('.').map(Number);
-  if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part))) return true;
+  if (octets.length !== 4) return undefined;
+  return octets as [number, number, number, number];
+}
 
-  const [a = 0, b = 0, c = 0] = octets;
+function isPrivateIpv4(hostname: string): boolean {
+  const octets = ipv4Parts(hostname);
+  if (!octets) return true;
+
+  const [a, b, c] = octets;
   return (
     a === 0 ||
     a === 10 ||
@@ -41,18 +48,59 @@ function isPrivateIpv4(hostname: string): boolean {
   );
 }
 
-function isPrivateIpv6(hostname: string): boolean {
-  const value = hostname.toLowerCase();
-  if (value === '::' || value === '::1') return true;
-  if (value.startsWith('fc') || value.startsWith('fd') || value.startsWith('ff')) return true;
-  if (/^fe[89ab]/.test(value)) return true;
+function ipv6Hextets(hostname: string): number[] | undefined {
+  if (isIP(hostname) !== 6) return undefined;
 
-  if (value.startsWith('::ffff:')) {
-    const mapped = value.slice('::ffff:'.length);
-    if (isIP(mapped) === 4) return isPrivateIpv4(mapped);
+  let value = hostname.toLowerCase();
+  const zoneIndex = value.indexOf('%');
+  if (zoneIndex >= 0) value = value.slice(0, zoneIndex);
+
+  const lastColon = value.lastIndexOf(':');
+  const ipv4Tail = lastColon >= 0 ? value.slice(lastColon + 1) : '';
+  if (isIP(ipv4Tail) === 4) {
+    const parts = ipv4Parts(ipv4Tail);
+    if (!parts) return undefined;
+    const [a, b, c, d] = parts;
+    value = `${value.slice(0, lastColon)}:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
   }
 
-  return false;
+  const halves = value.split('::');
+  if (halves.length > 2) return undefined;
+
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves[1] ? halves[1].split(':') : [];
+  const missing = halves.length === 2 ? 8 - left.length - right.length : 0;
+  if ((halves.length === 1 && left.length !== 8) || missing < 0) return undefined;
+
+  const tokens = [...left, ...Array.from({ length: missing }, () => '0'), ...right];
+  if (tokens.length !== 8 || tokens.some((token) => !/^[0-9a-f]{1,4}$/.test(token))) {
+    return undefined;
+  }
+
+  return tokens.map((token) => Number.parseInt(token, 16));
+}
+
+function isPrivateIpv6(hostname: string): boolean {
+  const parts = ipv6Hextets(hostname);
+  if (!parts) return true;
+
+  const [first = 0] = parts;
+  const allZero = parts.every((part) => part === 0);
+  const loopback = parts.slice(0, 7).every((part) => part === 0) && parts[7] === 1;
+  const uniqueLocal = (first & 0xfe00) === 0xfc00;
+  const linkLocal = (first & 0xffc0) === 0xfe80;
+  const multicast = (first & 0xff00) === 0xff00;
+  const ipv4Mapped = parts.slice(0, 5).every((part) => part === 0) && parts[5] === 0xffff;
+
+  if (ipv4Mapped) {
+    const high = parts[6] ?? 0;
+    const low = parts[7] ?? 0;
+    return isPrivateIpv4(
+      `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`,
+    );
+  }
+
+  return allZero || loopback || uniqueLocal || linkLocal || multicast;
 }
 
 export function isBlockedBrowserUrl(value: string): boolean {
