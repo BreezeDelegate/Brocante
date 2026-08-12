@@ -19,11 +19,12 @@ The API is designed to sit behind HTTPS on a reverse proxy. In production:
 - keep Ollama private and unreachable from the public internet;
 - run the supplied container as non-root and read-only;
 - keep `no-new-privileges`, `cap_drop: ALL`, the PID limit and the supplied seccomp profile enabled;
+- re-add only `SYS_CHROOT`, which Chromium needs for its filesystem sandbox step;
 - do not give Chromium privileged mode, host networking, `SYS_ADMIN` or broad capabilities;
 - restrict browser egress from loopback, private/link-local, internal names and infrastructure metadata endpoints;
 - install OS, base-image and dependency security updates regularly.
 
-Chromium runs as a non-root user with its sandbox enabled. The seccomp profile permits only the additional user-namespace syscalls needed to keep that sandbox active in Docker. CI smoke-tests a sandboxed browser under the hardened runtime flags.
+Chromium runs as a non-root user with its sandbox enabled. The seccomp profile permits the additional user-namespace syscalls needed to keep that sandbox active in Docker, while the container capability set is reduced to `SYS_CHROOT` only after dropping all capabilities. CI smoke-tests a sandboxed browser under the same hardened runtime flags.
 
 The browser URL policy is defense in depth, not a replacement for network policy. Hardened/public deployments should also use host/cloud firewall rules that prevent the container from reaching unrelated LAN/control-plane services. See the browser-isolation ADR for residual risks.
 
