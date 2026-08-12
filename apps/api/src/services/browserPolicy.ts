@@ -61,8 +61,7 @@ function ipv6Hextets(hostname: string): number[] | undefined {
     const parts = ipv4Parts(ipv4Tail);
     if (!parts) return undefined;
     const [a, b, c, d] = parts;
-    value =
-      `${value.slice(0, lastColon)}:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+    value = `${value.slice(0, lastColon)}:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
   }
 
   const halves = value.split('::');
