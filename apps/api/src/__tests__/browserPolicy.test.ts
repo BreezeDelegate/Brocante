@@ -19,6 +19,8 @@ describe('browser network policy', () => {
     'http://[::1]/',
     'http://[fd00::1]/',
     'http://[fe80::1]/',
+    'http://[::ffff:127.0.0.1]/',
+    'http://[::ffff:10.0.0.1]/',
   ])('blocks private, local or non-routable target %s', (url) => {
     expect(isBlockedBrowserUrl(url)).toBe(true);
   });
@@ -26,6 +28,7 @@ describe('browser network policy', () => {
   it('allows ordinary public HTTPS resources', () => {
     expect(isBlockedBrowserUrl('https://www.vinted.fr/catalog')).toBe(false);
     expect(isBlockedBrowserUrl('https://cdn.example.com/app.js')).toBe(false);
+    expect(isBlockedBrowserUrl('http://[2606:4700:4700::1111]/')).toBe(false);
   });
 
   it('allows main navigation only to exact HTTPS marketplace hosts', () => {
