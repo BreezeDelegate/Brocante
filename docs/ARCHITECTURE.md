@@ -50,7 +50,7 @@ Provider failures are returned as stable categories rather than leaking internal
 
 The browser/PWA, internet client, marketplace page, model output and external provider response are all untrusted. The reverse proxy controls public ingress. The Node API is the application trust boundary. The Chromium process is further isolated by a non-root container and its browser sandbox.
 
-The container is intentionally not privileged. Its filesystem is read-only except temporary storage; process count/shared memory are bounded; Linux capabilities are dropped and privilege escalation is disabled. A seccomp profile permits the user-namespace syscalls Chromium needs for its sandbox.
+The container is intentionally not privileged. Its filesystem is read-only except temporary storage; process count/shared memory are bounded; all Linux capabilities are dropped first and only `SYS_CHROOT` is re-added for Chromium's filesystem sandbox step; privilege escalation is disabled. A seccomp profile permits the user-namespace syscalls Chromium needs for its sandbox. `SYS_ADMIN`, host networking and privileged mode are not part of the supported production boundary.
 
 ## Architectural invariants
 
@@ -62,6 +62,7 @@ The container is intentionally not privileged. Its filesystem is read-only excep
 - Server-side persistence is not required for normal operation.
 - Browser main navigation cannot leave the configured marketplace host set.
 - No release is produced from dependencies that were not installed from the committed lockfile.
+- The container capability set is limited to `SYS_CHROOT` after an explicit drop-all baseline.
 
 ## Failure model
 
