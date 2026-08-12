@@ -26,7 +26,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24
+          node-version: 24.18.0
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -67,7 +67,10 @@ jobs:
             --name brocante-ci \
             --init \
             --read-only \
+            --security-opt no-new-privileges:true \
             --security-opt "seccomp=${GITHUB_WORKSPACE}/.docker/seccomp_profile.json" \
+            --cap-drop ALL \
+            --pids-limit 256 \
             --tmpfs /tmp:rw,nosuid,size=256m \
             --shm-size=256m \
             -e API_TOKEN=ci-only-token-0123456789abcdef \
@@ -86,6 +89,9 @@ jobs:
           done
           echo 'API did not become healthy' >&2
           exit 1
+
+      - name: Verify non-root runtime
+        run: test "$(docker exec brocante-ci id -u)" != "0"
 
       - name: Verify Chromium sandbox
         run: >-
