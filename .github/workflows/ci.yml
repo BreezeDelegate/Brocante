@@ -70,6 +70,7 @@ jobs:
             --security-opt no-new-privileges:true \
             --security-opt "seccomp=${GITHUB_WORKSPACE}/.docker/seccomp_profile.json" \
             --cap-drop ALL \
+            --cap-add SYS_CHROOT \
             --pids-limit 256 \
             --tmpfs /tmp:rw,nosuid,size=256m \
             --shm-size=256m \
