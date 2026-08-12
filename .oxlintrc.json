@@ -1,0 +1,16 @@
+{
+  "plugins": ["react", "typescript", "unicorn"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "rules": {
+    "no-console": "off",
+    "unicorn/prefer-top-level-await": "off",
+    "react/react-in-jsx-scope": "off",
+    "no-await-in-loop": "off",
+    "unicorn/no-array-sort": "off"
+  },
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**"]
+}
