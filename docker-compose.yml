@@ -5,7 +5,10 @@ services:
     init: true
     read_only: true
     security_opt:
+      - no-new-privileges:true
       - seccomp=.docker/seccomp_profile.json
+    cap_drop:
+      - ALL
     tmpfs:
       - /tmp:rw,nosuid,size=256m
     shm_size: 256mb
