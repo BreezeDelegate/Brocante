@@ -1,3 +1,4 @@
+import { apiEndpoint, nativeApiBaseError } from './platform';
 import type { Listing, Preferences, ProviderError, ProviderId, ScanErrorKind } from './types';
 
 export interface SearchResponse {
@@ -18,10 +19,6 @@ export class ApiRequestError extends Error {
     super(message, options);
     this.name = 'ApiRequestError';
   }
-}
-
-function endpoint(apiBase: string, path: string): string {
-  return `${apiBase.replace(/\/$/, '')}${path}`;
 }
 
 function responseError(status: number): ApiRequestError {
@@ -62,6 +59,11 @@ async function requestJson<T>(
   body: unknown,
   timeoutMs: number,
 ): Promise<T> {
+  const configurationError = nativeApiBaseError(preferences.apiBase);
+  if (configurationError) {
+    throw new ApiRequestError(configurationError, 'configuration');
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -71,7 +73,7 @@ async function requestJson<T>(
       headers.authorization = `Bearer ${preferences.apiToken.trim()}`;
     }
 
-    const response = await fetch(endpoint(preferences.apiBase, path), {
+    const response = await fetch(apiEndpoint(preferences.apiBase, path), {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

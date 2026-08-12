@@ -11,9 +11,9 @@ Objectif : la première release publique doit être réellement exploitable en p
 - [x] Ollama optionnel ;
 - [x] API durcie, cache, Docker, CI et analyse de sécurité.
 
-## v0.2 — fiabilité terrain — bloquant v1.0
+## v0.2 — fiabilité terrain ✅
 
-- [ ] améliorer la tolérance aux changements Vinted / Leboncoin ;
+- [x] améliorer la tolérance aux changements Vinted / Leboncoin avec parsing testable, validation d'URL, déduplication et limite stricte ;
 - [x] ajouter eBay proprement via l'API Browse officielle, optionnelle et configurée uniquement côté serveur ;
 - [x] renforcer la reprise de file et les retours d'erreur avec classification transient/configuration/item et reprise persistée après interruption ;
 - [x] ajouter des E2E mobiles représentatifs : Chromium/Pixel 5 et WebKit/iPhone 12, avec import de lot, analyse, filtrage, reprise IndexedDB après interruption et persistance après reload.
@@ -22,12 +22,16 @@ Objectif : la première release publique doit être réellement exploitable en p
 
 Le tag `v1.0.0` n'est créé que lorsque tous les points suivants sont validés :
 
-- [ ] v0.2 terminé ;
-- [ ] parcours capture → analyse → filtrage → reprise après interruption validé sur mobile ;
+- [x] v0.2 terminé ;
+- [x] parcours capture → analyse → filtrage → reprise après interruption validé sur Chromium mobile et WebKit mobile ;
+- [ ] wrapper Android Capacitor reproductible, APK de test généré en CI et validé sur appareil physique ;
+- [ ] wrapper iOS Capacitor reproductible, build Xcode validé en CI et parcours d'installation/test sur iPhone documenté ;
+- [ ] configuration native HTTPS/CORS, permissions caméra et limites de sécurité documentées et testées ;
 - [ ] au moins un smoke test contrôlé de chaque provider activé en production, sans contournement anti-bot ;
 - [ ] déploiement et rollback répétés depuis un tag release-candidate sur la topologie supportée ;
-- [ ] CI, CodeQL, audit production, build Docker, runtime non-root et Chromium sandbox verts sur le commit de release ;
-- [ ] artefacts release, checksums et SBOM vérifiés ;
+- [ ] CI, E2E mobile, CI native, CodeQL, audit production, build Docker, runtime non-root et Chromium sandbox verts sur le commit de release ;
+- [ ] release candidate contenant PWA, APK Android de test, projet iOS/Xcode, checksums et SBOM vérifiés ;
+- [ ] stratégie de signature/distribution de la release stable validée pour Android et iOS ;
 - [ ] aucun défaut connu bloquant sécurité, correction, récupération ou utilisation terrain du flux principal.
 
 ## Après v1.0 — surveillance
@@ -39,5 +43,4 @@ Le tag `v1.0.0` n'est créé que lorsque tous les points suivants sont validés 
 ## Plus tard
 
 - identification davantage exécutée sur l'appareil ;
-- meilleure fusion des comparables et score de confiance ;
-- empaquetage natif Android/iOS si la PWA ne suffit plus.
+- meilleure fusion des comparables et score de confiance.

@@ -1,4 +1,5 @@
 import { interruptedScan } from './analysis';
+import { defaultApiBase } from './platform';
 import type { Preferences, ProviderId, Scan } from './types';
 
 const PREFERENCES_KEY = 'brocante.preferences.v2';
@@ -12,7 +13,7 @@ export const defaults: Preferences = {
   providerOrder: ['vinted', 'leboncoin', 'ebay'],
   enabled: { vinted: true, leboncoin: true, ebay: false },
   minimumValue: 2,
-  apiBase: location.hostname === 'localhost' ? 'http://localhost:8787' : '/api',
+  apiBase: defaultApiBase(),
   apiToken: '',
 };
 
