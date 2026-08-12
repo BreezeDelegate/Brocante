@@ -9,6 +9,7 @@ This runbook defines the supported production baseline, verification, rollback a
 - Brocante API on a VPS/container host
 - Docker Compose host mapping `127.0.0.1:8787:8787`
 - Private Ollama endpoint on the host or trusted private network
+- Optional eBay Browse API access using server-side application credentials
 - No server-side application database
 
 Do not expose port 8787 or Ollama directly to the public internet.
@@ -22,7 +23,8 @@ Do not expose port 8787 or Ollama directly to the public internet.
 5. Set `CORS_ORIGINS` only for intentional cross-origin deployments.
 6. Confirm host firewall policy and HTTPS termination.
 7. Confirm Ollama is private and reachable only where required.
-8. Review dependency/security advisories and release notes before major updates.
+8. If eBay is enabled, store `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET` in the operator's secret store, configure both together, and confirm the developer account has the production Buy/Browse access required by eBay.
+9. Review dependency/security advisories and release notes before major updates.
 
 ## Deploy
 
@@ -40,6 +42,8 @@ curl --fail http://127.0.0.1:8787/health
 
 Then verify through the public HTTPS origin, including one authenticated request and one expected unauthorized request. Do not paste secrets into shared shell history or incident tickets.
 
+If eBay is configured, enable it only for the smoke test, run one controlled search and confirm that a provider failure remains isolated from Vinted/Leboncoin. Do not print OAuth responses or credentials while debugging.
+
 ## Runtime security expectations
 
 The supplied Compose configuration should remain non-root, read-only and `no-new-privileges`, bounded by a PID limit, and use the project seccomp profile so Chromium can keep its sandbox active. The capability model is `cap_drop: ALL` followed by `cap_add: SYS_CHROOT` only; that single capability is retained for Chromium's filesystem sandbox step.
@@ -50,7 +54,7 @@ A provider/browser launch failure is not a reason to add privileged mode, `SYS_A
 
 `/health` proves the API process can answer HTTP; it is intentionally shallow and does not expose internals. Production operators should additionally monitor reverse-proxy 5xx rate, container restart count, resource saturation, provider error rate and disk/system health using the host's normal monitoring stack.
 
-Request logs are structured metadata. They must not be changed to include bodies, search terms, photos or authorization data.
+Request logs are structured metadata. They must not be changed to include bodies, search terms, photos, authorization data, eBay credentials or OAuth tokens.
 
 ## Routine updates
 
@@ -60,7 +64,8 @@ At least monthly, and promptly for relevant security advisories:
 - rebuild images with current base-image security fixes;
 - run `npm audit --omit=dev --audit-level=high`;
 - verify CI/CodeQL;
-- test one real provider query in a controlled environment because marketplace DOM changes are not fully covered by unit tests.
+- test one real provider query in a controlled environment because marketplace DOM/API changes are not fully covered by unit tests;
+- if eBay is enabled, review its current production-access/API requirements and rotate its client secret according to the operator's credential policy.
 
 ## Backup and recovery
 
@@ -82,10 +87,11 @@ Because server state is disposable, rollback normally does not require data migr
 
 ## Security incident response
 
-### Suspected token leak
+### Suspected token or provider-credential leak
 
-- Rotate `API_TOKEN` immediately.
-- Restart/redeploy the API with the new secret.
+- Rotate `API_TOKEN` immediately if affected.
+- Rotate the affected provider credential (including the eBay client secret) and invalidate/revoke related tokens through the provider's supported process when available.
+- Restart/redeploy the API with the new secret configuration.
 - Inspect metadata logs for unusual request volume/status patterns without copying sensitive data into tickets.
 - Determine the leak source and invalidate any related reverse-proxy/IAP credentials.
 
@@ -93,13 +99,13 @@ Because server state is disposable, rollback normally does not require data migr
 
 - Remove the service from public reach.
 - Preserve relevant host/reverse-proxy/container metadata logs and image/tag identifiers.
-- Rotate API and infrastructure secrets from a trusted machine.
+- Rotate API, provider and infrastructure secrets from a trusted machine.
 - Rebuild a clean host/image from known-good source; do not rely on cleaning a potentially compromised container.
 - Review browser/provider and dependency changes leading to the incident.
 
 ### Marketplace/provider incident
 
-If a provider starts blocking, redirecting unexpectedly or returning malformed content, disable/avoid that provider or let it fail closed. Do not add bypass behavior as an emergency fix.
+If a provider starts blocking, redirecting unexpectedly, rejecting API access or returning malformed content, disable/avoid that provider or let it fail closed. Do not add bypass behavior as an emergency fix.
 
 ## Post-incident review
 

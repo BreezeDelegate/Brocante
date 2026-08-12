@@ -33,6 +33,9 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5vl:3b}
       VINTED_GAP_MS: ${VINTED_GAP_MS:-2500}
       LEBONCOIN_GAP_MS: ${LEBONCOIN_GAP_MS:-3000}
+      EBAY_GAP_MS: ${EBAY_GAP_MS:-1000}
+      EBAY_CLIENT_ID: ${EBAY_CLIENT_ID:-}
+      EBAY_CLIENT_SECRET: ${EBAY_CLIENT_SECRET:-}
     ports:
       - '127.0.0.1:8787:8787'
     extra_hosts:

@@ -26,6 +26,12 @@ npm audit --omit=dev --audit-level=high
 
 La reconnaissance visuelle est optionnelle et utilise Ollama sur le serveur. Sans Ollama, le nom de l'objet peut être saisi avant l'analyse.
 
+## Providers marketplace
+
+Vinted et Leboncoin sont des connecteurs web volontairement conservateurs : ils ralentissent les requêtes, limitent leur navigation et peuvent cesser de fonctionner si les sites changent ou refusent l'accès. Le projet n'ajoute pas de contournement CAPTCHA/anti-bot.
+
+eBay utilise l'API Browse officielle quand `EBAY_CLIENT_ID` et `EBAY_CLIENT_SECRET` sont configurés côté serveur. Le provider reste désactivé par défaut dans la PWA et l'application doit rester utilisable sans eBay. Le token application OAuth est mis en cache en mémoire et n'est jamais envoyé au client. L'accès production aux Buy APIs dépend des conditions et de l'approbation eBay en vigueur ; il faut donc valider l'accès du compte développeur avant de considérer eBay comme une source disponible en production.
+
 ## Déploiement
 
 Le frontend est statique. L'API est prévue pour un VPS derrière HTTPS ; le `docker-compose.yml` ne l'expose que sur `127.0.0.1`, exécute l'API en non-root/read-only, retire toutes les capabilities Linux puis ne réintroduit que `SYS_CHROOT` nécessaire au sandbox Chromium, et interdit l'escalade de privilèges. Le profil seccomp fourni garde le sandbox navigateur actif sans `SYS_ADMIN` ni mode privilégié.
@@ -39,8 +45,6 @@ curl --fail http://127.0.0.1:8787/health
 ```
 
 Pour la topologie HTTPS/reverse-proxy, le rollback et les incidents, suis `docs/OPERATIONS.md` plutôt que d'exposer directement l'API.
-
-Vinted et Leboncoin sont des connecteurs web volontairement conservateurs : ils ralentissent les requêtes, limitent leur navigation et peuvent cesser de fonctionner si les sites changent ou refusent l'accès. Le projet n'ajoute pas de contournement CAPTCHA/anti-bot.
 
 ## Sécurité et supply chain
 
