@@ -1,10 +1,4 @@
-import type {
-  Listing,
-  Preferences,
-  ProviderError,
-  ProviderId,
-  ScanErrorKind,
-} from './types';
+import type { Listing, Preferences, ProviderError, ProviderId, ScanErrorKind } from './types';
 
 export interface SearchResponse {
   listings: Listing[];
@@ -113,12 +107,7 @@ export async function search(
   label: string,
   providers: ProviderId[],
 ): Promise<SearchResponse> {
-  return requestJson<SearchResponse>(
-    preferences,
-    '/search',
-    { query: label, providers },
-    120_000,
-  );
+  return requestJson<SearchResponse>(preferences, '/search', { query: label, providers }, 120_000);
 }
 
 export async function identify(
