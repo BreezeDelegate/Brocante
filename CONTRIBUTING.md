@@ -1,10 +1,12 @@
 # Contributing
 
-Brocante reste volontairement petit. Une modification doit rendre le produit plus sûr, plus simple ou plus fiable sans ajouter d'infrastructure par défaut.
+Brocante stays deliberately small. Changes should make the product safer, simpler or more reliable without adding infrastructure by default.
 
-## Avant une pull request
+Start with `AGENTS.md` for repository-wide guardrails and `docs/ENGINEERING_STANDARDS.md` for the review bar. Security-sensitive architecture is documented under `docs/decisions/`.
 
-Utilise la version Node de `.node-version` et npm 11, puis lance :
+## Development baseline
+
+Use the Node version in `.node-version` and npm 11. Before opening a pull request, run:
 
 ```bash
 npm ci
@@ -12,28 +14,60 @@ npm run check
 npm audit --omit=dev --audit-level=high
 ```
 
-Garde les PR ciblées, explique l'effet utilisateur et ajoute des tests pour les comportements modifiés. Mets à jour `package-lock.json` avec toute modification de dépendance.
+If Docker, browser execution, networking, authentication, CI or release behavior changes, also verify the relevant container/security workflow. Never hide a failed gate with `continue-on-error` or a broad disable without documenting why.
 
-## Règles d'ingénierie
+## Scope and risk
 
-Quand des objectifs entrent en conflit : sécurité/vie privée, correction, fiabilité, maintenabilité, performance, puis vitesse de livraison.
+Keep pull requests focused and classify them low, normal or high risk using `docs/ENGINEERING_STANDARDS.md`. Authentication, secrets, CORS/proxy trust, browser isolation, Docker permissions, persistence formats, dependency lifecycle scripts, workflows and releases are high-risk surfaces.
 
-- Ne jamais committer de secrets, tokens, vraies photos utilisateur, données de production ou sessions marketplace.
-- Valider les données non fiables aux frontières du système : HTML marketplace, URLs et sortie du modèle inclus.
-- Ne pas ajouter de bypass CAPTCHA, spoofing d'empreinte, rotation de proxy ou autre contournement anti-abus.
-- Garder chaque intégration marketplace derrière son provider ; l'UI ne dépend pas du HTML d'un site.
-- Bloquer l'accès du navigateur aux réseaux loopback, privés/link-local, noms internes et endpoints metadata.
-- Ne jamais utiliser de conteneur privilégié, host networking, `SYS_ADMIN` ou capabilities larges pour faire fonctionner Chromium.
-- Préférer traitement et stockage locaux lorsqu'ils réduisent réellement l'exposition des données ou la charge serveur.
-- Conserver files bornées, cache, timeouts et rythme prudent des providers sauf mesure justifiant un changement.
-- Ne pas logger corps de requête, images, authorization, termes recherchés ou secrets.
-- Tout nouveau comportement réseau doit avoir limites d'entrée, timeout et chemin d'échec explicite.
-- Toute modification sensible à la sécurité doit tester les chemins acceptés et refusés.
-- Les GitHub Actions utilisent le minimum de permissions et des SHAs immuables.
-- Garder la documentation courte et à jour ; supprimer l'obsolète plutôt qu'empiler des fichiers.
+Normal/high-risk PRs must state the rollback path. High-risk PRs also need explicit security/privacy impact and negative-path tests where testable.
 
-Auth, CORS/proxy, isolation navigateur, permissions Docker, persistance, scripts d'installation, workflows et releases sont des surfaces à haut risque. Une PR qui les touche doit indiquer l'impact sécurité/vie privée et la méthode de rollback.
+## Engineering rules
 
-Les commits et titres de PR décrivent simplement le changement. Les préfixes conventionnels sont facultatifs.
+- Never commit credentials, tokens, real user photos, production data or marketplace sessions.
+- Validate untrusted data at process boundaries. Marketplace markup, URLs and model output are untrusted.
+- Do not add CAPTCHA bypasses, fingerprint spoofing, proxy rotation or other anti-abuse circumvention.
+- Keep marketplace integrations behind providers. UI code must not depend on marketplace-specific HTML.
+- Browser traffic must not be allowed to reach loopback, private/link-local networks, internal names or metadata endpoints.
+- Never use privileged containers, host networking, `SYS_ADMIN` or broad capabilities to make Chromium work.
+- Prefer local processing and storage when it materially reduces data exposure or server load.
+- Preserve bounded queues, caches, timeouts and conservative provider pacing unless measurements justify a change.
+- Do not log request bodies, image payloads, authorization headers, search terms or secrets.
+- New network-facing behavior needs input limits, timeouts and an explicit failure path.
+- Security-sensitive changes require tests for both accepted and rejected paths.
+- GitHub Actions must use least-privilege permissions and immutable commit SHAs.
+- Keep documentation current in the same change. Stale instructions are a defect.
 
-Toute contribution est distribuée sous PolyForm Noncommercial 1.0.0.
+## Dependencies
+
+Avoid dependencies for small standard-library problems. When a dependency changes:
+
+- explain why it is needed;
+- review the direct/transitive change in `package-lock.json`;
+- review any new install/lifecycle scripts;
+- update the explicit `allowScripts` list only after reviewing the exact package/version;
+- run the production audit.
+
+Do not hand-edit the lockfile.
+
+## Provider changes
+
+Marketplace connectors are expected to break when external DOM or access policy changes. Keep selectors/parsing inside the provider, preserve conservative pacing and fail cleanly. A provider block is not permission to add anti-bot bypass behavior.
+
+Changes that broaden browser navigation or subresource access require a threat-model review.
+
+## Pull requests and commits
+
+The PR description must explain what changed, why, user-visible impact, verification, risk, security/privacy impact and rollback when applicable. Review the complete diff before requesting merge, including lockfiles, workflows and generated output.
+
+Commit messages and PR titles should describe the change plainly. Conventional prefixes are welcome but not required. Avoid mixing unrelated formatting/refactors with behavior changes.
+
+## Definition of done
+
+A change is complete only when implementation, tests, docs, configuration and operations agree and required CI/security checks are green. See `AGENTS.md` for the full repository contract.
+
+## Security reports
+
+Do not open a public issue for an exploitable vulnerability. Follow `SECURITY.md` and use GitHub private vulnerability reporting when enabled.
+
+By contributing, you agree that your contribution is distributed under the repository's PolyForm Noncommercial 1.0.0 license.

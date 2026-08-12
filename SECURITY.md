@@ -1,36 +1,49 @@
 # Security
 
-Les correctifs de sécurité concernent `main` et la dernière release.
+Security fixes are supported on `main` and the latest release. The engineering threat model is maintained in `docs/THREAT_MODEL.md`; deployment and incident procedures are in `docs/OPERATIONS.md`.
 
-## Signaler une vulnérabilité
+## Reporting a vulnerability
 
-N'ouvre pas d'issue publique pour une vulnérabilité exploitable. Utilise le signalement privé GitHub lorsqu'il est activé et fournis version/commit, impact, reproduction et preuve de concept minimale. N'inclus jamais de vrais secrets, données de production ou photos personnelles.
+Do not open a public issue for an exploitable vulnerability. Use GitHub private vulnerability reporting for this repository when enabled. Include the affected version/commit, impact, reproduction steps and the smallest practical proof of concept. Do not include real credentials, production data or personal photos.
 
-## Déploiement
+Avoid destructive testing against systems or marketplace accounts you do not own. Give maintainers a reasonable opportunity to investigate and fix before public disclosure.
 
-L'API est conçue pour être placée derrière HTTPS. En production :
+## Deployment baseline
 
-- garde le port `8787` lié à localhost ;
-- configure un `API_TOKEN` long et aléatoire sauf si un accès privé fiable protège déjà l'API ;
-- active `TRUST_PROXY=1` uniquement derrière un unique reverse proxy de confiance ;
-- n'utilise `CORS_ORIGINS` que si PWA et API ont volontairement des origines différentes ;
-- garde Ollama privé ;
-- conserve le conteneur non-root, read-only, avec PID limit, `/tmp` borné et le profil seccomp Playwright ;
-- n'accorde jamais à Chromium le mode privileged, host networking ou `SYS_ADMIN` ;
-- ne force pas `no-new-privileges` ni `cap_drop: ALL` sur ce conteneur : ces réglages empêchent le helper SUID de Chromium d'établir son sandbox ;
-- bloque l'egress navigateur vers loopback, réseaux privés/link-local, noms internes et endpoints metadata ;
-- applique régulièrement les mises à jour de sécurité OS, image de base et dépendances.
+The API is designed to sit behind HTTPS on a reverse proxy. In production:
 
-Chromium s'exécute avec son sandbox. La CI vérifie réellement le démarrage de l'API, l'utilisateur non-root et le lancement d'un navigateur sandboxé sous les mêmes contraintes que le déploiement.
+- keep host port `8787` bound to localhost;
+- set a long random `API_TOKEN` unless access is already enforced by a trusted private network or identity-aware proxy;
+- set `TRUST_PROXY=1` only when exactly one trusted reverse proxy is in front of the API;
+- set `CORS_ORIGINS` only when the PWA and API intentionally use different origins;
+- keep Ollama private and unreachable from the public internet;
+- run the supplied container as non-root and read-only;
+- keep `no-new-privileges`, `cap_drop: ALL`, the PID limit and the supplied seccomp profile enabled;
+- re-add only `SYS_CHROOT`, which Chromium needs for its filesystem sandbox step;
+- do not give Chromium privileged mode, host networking, `SYS_ADMIN` or broad capabilities;
+- restrict browser egress from loopback, private/link-local, internal names and infrastructure metadata endpoints;
+- install OS, base-image and dependency security updates regularly.
 
-## Vie privée et contenu externe
+Chromium runs as a non-root user with its sandbox enabled. The seccomp profile permits the additional user-namespace syscalls needed to keep that sandbox active in Docker, while the container capability set is reduced to `SYS_CHROOT` only after dropping all capabilities. CI smoke-tests a sandboxed browser under the same hardened runtime flags.
 
-Le frontend n'intègre ni analytics ni scripts tiers par défaut. Photos et historique restent sur l'appareil sauf lorsqu'une analyse est explicitement demandée. L'API n'a pas de base utilisateur durable et ses logs excluent corps, images, recherches, authorization et secrets.
+The browser URL policy is defense in depth, not a replacement for network policy. Hardened/public deployments should also use host/cloud firewall rules that prevent the container from reaching unrelated LAN/control-plane services. See the browser-isolation ADR for residual risks.
 
-Les pages marketplace, URLs et sorties IA sont non fiables. La navigation principale est limitée aux hôtes des providers et les destinations locales/privées évidentes sont bloquées. Cette politique applicative complète, mais ne remplace pas, un pare-feu réseau lorsque le service est exposé plus largement.
+## Application privacy boundary
 
-Brocante n'implémente volontairement aucun bypass CAPTCHA, spoofing d'empreinte, rotation de proxy ou mécanisme équivalent.
+The production PWA should reverse-proxy `/api` so its CSP can keep application browser connections same-origin. There are no analytics or third-party application scripts by default.
+
+Photos and scan history stay on the device unless the user explicitly requests analysis. The API has no durable user database. Request logging excludes bodies, search terms, authorization data and image payloads.
+
+The browser token is a shared secret for this small private deployment, not a full identity system. Brocante may store it on the device to preserve configuration, so compromise of the application origin can expose it. Use HTTPS, a trusted origin and no third-party scripts.
+
+## Untrusted external content
+
+Marketplace pages, URLs and AI output are untrusted input. Main Chromium navigation is restricted to exact provider hosts and obvious local/private browser targets are blocked. Provider errors fail closed rather than enabling anti-abuse bypasses.
+
+Brocante intentionally does not implement CAPTCHA bypasses, fingerprint spoofing, proxy rotation or similar circumvention.
 
 ## Supply chain
 
-Les installations utilisent `npm ci`, les scripts lifecycle sont allowlistés explicitement, les Actions sont épinglées par SHA, CodeQL tourne en CI et les releases incluent checksums et SBOM CycloneDX.
+Dependency installs are lockfile-driven with `npm ci`, npm lifecycle scripts are explicitly allowlisted, Actions are pinned to immutable SHAs, CodeQL runs on changes/schedule and releases include checksums plus a CycloneDX SBOM.
+
+Repository-level controls such as Dependency Graph, private vulnerability reporting, secret scanning/push protection and branch rules are documented in `docs/GITHUB_SETTINGS.md` because they must be enabled in GitHub settings.

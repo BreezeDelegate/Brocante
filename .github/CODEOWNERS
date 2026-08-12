@@ -1,2 +1,19 @@
 * @BreezeDelegate
-.github/workflows/ @BreezeDelegate
+
+# Governance and supply chain
+/AGENTS.md @BreezeDelegate
+/SECURITY.md @BreezeDelegate
+/docs/ @BreezeDelegate
+/.github/workflows/ @BreezeDelegate
+/.github/dependabot.yml @BreezeDelegate
+/package.json @BreezeDelegate
+/package-lock.json @BreezeDelegate
+
+# Runtime and deployment isolation
+/Dockerfile @BreezeDelegate
+/docker-compose.yml @BreezeDelegate
+/.docker/ @BreezeDelegate
+/apps/api/src/middleware/ @BreezeDelegate
+/apps/api/src/services/browser.ts @BreezeDelegate
+/apps/api/src/services/browserPolicy.ts @BreezeDelegate
+/apps/api/src/config.ts @BreezeDelegate
