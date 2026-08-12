@@ -48,9 +48,15 @@ The client submits a bounded query and an explicit provider list to `/search`. T
 
 Vinted and Leboncoin use the isolated Playwright browser path. eBay uses the official Browse API directly over HTTPS when server-side credentials are configured. Its OAuth client-credentials token is reused until shortly before expiry, requests are bounded by an internal timeout and responses are validated before they become `Listing` values. Only fixed-price items deliverable in France, denominated in EUR and linking to the expected eBay France host are accepted.
 
-Provider failures are returned as stable categories rather than leaking internals. The PWA keeps successful results when only some providers fail and displays those failed sources explicitly. If the API cannot be reached, authentication/rate limiting blocks the request, or every requested provider fails, the batch pauses after the current item instead of repeatedly failing the rest of the local queue.
+Provider failures are returned as stable categories rather than leaking internals. The PWA keeps successful results when only some providers fail and displays those failed sources explicitly.
 
-Per-scan IndexedDB writes are serialized so a slower stale write cannot overwrite a newer scan state or resurrect an item after deletion. A scan left in `processing` by a browser/app interruption is recovered as a retryable error on the next load and that recovery is persisted before normal queue processing resumes.
+Client/API failures are classified before queue control:
+
+- `transient`: network failures, timeouts, rate limits, 5xx responses, interrupted processing or a search where every requested provider failed. The batch pauses and the item remains eligible for a later explicit retry.
+- `configuration`: authentication, CORS/origin/API-address problems or no enabled provider. The batch pauses immediately so following items do not repeat the same global failure; a later explicit retry is allowed after settings are fixed.
+- `item`: invalid/oversized input or another failure confined to one scan. The failed scan is persisted but omitted from later batch retries, while the current batch continues. The user can still retry that card manually.
+
+Per-scan IndexedDB writes are serialized so a slower stale write cannot overwrite a newer scan state or resurrect an item after deletion. A scan left in `processing` by a browser/app interruption is recovered as a transient retryable error on the next load and that recovery is persisted before normal queue processing resumes. Old scan records without an error classification remain retryable for backward compatibility.
 
 ## Security boundaries
 
@@ -73,10 +79,10 @@ The container is intentionally not privileged. Its filesystem is read-only excep
 
 ## Failure model
 
-Marketplace DOM changes or blocking are expected operational failures, not reasons to weaken security. Provider errors degrade only the affected source when usable results remain. A failure affecting the whole request path pauses batch processing so the user can retry without multiplying requests or replacing successful prior items with a chain of identical failures.
+Marketplace DOM changes or blocking are expected operational failures, not reasons to weaken security. Provider errors degrade only the affected source when usable results remain. Failures that can affect following items pause batch processing so the user can retry without multiplying requests or replacing successful prior items with a chain of identical failures. Item-local failures are isolated instead of blocking unrelated scans.
 
 For eBay, missing credentials, token failures, production-access restrictions, malformed responses, upstream errors and timeouts fail the provider closed. A single Browse 401 invalidates the cached application token and retries once with a newly minted token; repeated failure is surfaced as provider unavailability rather than an authentication detail.
 
-Local processing state is recoverable: interrupted `processing` records become retryable errors after reload rather than remaining permanently busy. Ollama can be absent; users may name items manually. Process-local cache loss is harmless. If the browser cannot launch safely, the provider should fail rather than running with elevated container privileges.
+Local processing state is recoverable: interrupted `processing` records become transient retryable errors after reload rather than remaining permanently busy. Ollama can be absent; users may name items manually. Process-local cache loss is harmless. If the browser cannot launch safely, the provider should fail rather than running with elevated container privileges.
 
 Durable changes to these boundaries or invariants require an ADR under `docs/decisions/`.
