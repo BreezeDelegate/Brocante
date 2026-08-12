@@ -53,14 +53,18 @@ async function runStage(profile, stage, action) {
 }
 
 async function waitForServer() {
-  await eventually(async () => {
-    try {
-      const response = await fetch(BASE_URL);
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }, 'Vite preview did not start', 20_000);
+  await eventually(
+    async () => {
+      try {
+        const response = await fetch(BASE_URL);
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    'Vite preview did not start',
+    20_000,
+  );
 }
 
 function startServer() {
@@ -79,33 +83,36 @@ function startServer() {
 }
 
 async function seedInterruptedScan(page) {
-  await page.evaluate(async ({ image }) => {
-    const database = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('brocante', 1);
-      request.addEventListener('upgradeneeded', () => {
-        if (!request.result.objectStoreNames.contains('scans')) {
-          request.result.createObjectStore('scans', { keyPath: 'id' });
-        }
+  await page.evaluate(
+    async ({ image }) => {
+      const database = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('brocante', 1);
+        request.addEventListener('upgradeneeded', () => {
+          if (!request.result.objectStoreNames.contains('scans')) {
+            request.result.createObjectStore('scans', { keyPath: 'id' });
+          }
+        });
+        request.addEventListener('success', () => resolve(request.result));
+        request.addEventListener('error', () => reject(request.error));
       });
-      request.addEventListener('success', () => resolve(request.result));
-      request.addEventListener('error', () => reject(request.error));
-    });
 
-    await new Promise((resolve, reject) => {
-      const transaction = database.transaction('scans', 'readwrite');
-      transaction.objectStore('scans').put({
-        id: 'interrupted-scan',
-        image,
-        label: 'objet repris',
-        status: 'processing',
-        createdAt: Date.now(),
-        listings: [],
+      await new Promise((resolve, reject) => {
+        const transaction = database.transaction('scans', 'readwrite');
+        transaction.objectStore('scans').put({
+          id: 'interrupted-scan',
+          image,
+          label: 'objet repris',
+          status: 'processing',
+          createdAt: Date.now(),
+          listings: [],
+        });
+        transaction.addEventListener('complete', () => resolve());
+        transaction.addEventListener('error', () => reject(transaction.error));
       });
-      transaction.addEventListener('complete', () => resolve());
-      transaction.addEventListener('error', () => reject(transaction.error));
-    });
-    database.close();
-  }, { image: INTERRUPTED_IMAGE });
+      database.close();
+    },
+    { image: INTERRUPTED_IMAGE },
+  );
 }
 
 function marketplaceResult(query) {
@@ -153,7 +160,10 @@ async function testBatchAndFilter(page) {
   ]);
 
   const cards = page.locator('.card');
-  await eventually(async () => (await cards.count()) === 2, 'Two imported objects were not rendered');
+  await eventually(
+    async () => (await cards.count()) === 2,
+    'Two imported objects were not rendered',
+  );
   await cards.nth(0).locator('input').fill('objet faible');
   await cards.nth(1).locator('input').fill('objet fort');
 
@@ -255,9 +265,6 @@ try {
   console.log('\n[e2e] all mobile profiles passed');
 } finally {
   server.kill('SIGTERM');
-  await Promise.race([
-    new Promise((resolve) => server.once('exit', resolve)),
-    delay(3_000),
-  ]);
+  await Promise.race([new Promise((resolve) => server.once('exit', resolve)), delay(3_000)]);
   if (server.exitCode === null) server.kill('SIGKILL');
 }
