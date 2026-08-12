@@ -40,6 +40,11 @@ jobs:
         working-directory: apps/web
         run: npx cap sync
 
+      - name: Verify Gradle wrapper
+        run: >-
+          echo '7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172  apps/web/android/gradle/wrapper/gradle-wrapper.jar'
+          | shasum -a 256 -c -
+
       - name: Build Android test APK
         working-directory: apps/web/android
         run: ./gradlew assembleDebug --no-daemon
