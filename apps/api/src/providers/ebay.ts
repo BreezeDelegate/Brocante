@@ -7,7 +7,9 @@ import { safeMarketplaceUrl } from './utils.js';
 
 const OAUTH_SCOPE = 'https://api.ebay.com/oauth/api_scope';
 const TOKEN_URL = 'https://api.ebay.com/identity/v1/oauth2/token';
-const SEARCH_URL = 'https://api.ebay.com/buy/browse/v1/item_summary/search';
+const SEARCH_URL =
+  'https://api.ebay.com/buy/browse/v1/item_summary/search';
+const SEARCH_FILTER = 'buyingOptions:{FIXED_PRICE},deliveryCountry:FR';
 const TOKEN_REFRESH_SAFETY_MS = 60_000;
 const MAX_RESULTS = 24;
 
@@ -25,8 +27,64 @@ interface CachedToken {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    return undefined;
+  }
   return value as Record<string, unknown>;
+}
+
+function isRequestTimeout(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError')
+  );
+}
+
+function eurPrice(value: unknown): number | undefined {
+  const price = record(value);
+  const raw = price?.value;
+  if (price?.currency !== 'EUR') return undefined;
+  if (typeof raw !== 'string' && typeof raw !== 'number') return undefined;
+
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+  return amount;
+}
+
+function listingFromSummary(summary: unknown): Listing | undefined {
+  const item = record(summary);
+  const itemId = item?.itemId;
+  const title = item?.title;
+  const amount = eurPrice(item?.price);
+  const itemWebUrl = item?.itemWebUrl;
+  const url =
+    typeof itemWebUrl === 'string'
+      ? safeMarketplaceUrl(itemWebUrl, 'www.ebay.fr')
+      : undefined;
+
+  if (
+    typeof itemId !== 'string' ||
+    !itemId ||
+    typeof title !== 'string' ||
+    !title.trim() ||
+    amount === undefined ||
+    !url
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: `ebay-${itemId}`,
+    provider: 'ebay',
+    title: title.trim().slice(0, 120),
+    price: amount,
+    currency: 'EUR',
+    url,
+  };
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -49,12 +107,7 @@ async function fetchWithTimeout(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    if (
-      error instanceof Error &&
-      (error.name === 'TimeoutError' || error.name === 'AbortError')
-    ) {
-      throw new Error('ebay timed out');
-    }
+    if (isRequestTimeout(error)) throw new Error('ebay timed out');
     throw new Error('eBay request failed');
   }
 }
@@ -114,24 +167,27 @@ export class EbayClient {
       throw new Error('eBay token response invalid');
     }
 
-    return {
-      value: accessToken,
-      expiresAt:
-        this.now() + Math.max(1_000, expiresIn * 1_000 - TOKEN_REFRESH_SAFETY_MS),
-    };
+    const lifetimeMs = expiresIn * 1_000 - TOKEN_REFRESH_SAFETY_MS;
+    const ttlMs = Math.max(1_000, lifetimeMs);
+    return { value: accessToken, expiresAt: this.now() + ttlMs };
   }
 
   private async accessToken(): Promise<string> {
-    if (this.token && this.token.expiresAt > this.now()) return this.token.value;
+    if (this.token && this.token.expiresAt > this.now()) {
+      return this.token.value;
+    }
     this.token = await this.requestToken();
     return this.token.value;
   }
 
-  private async requestSearch(query: string, token: string): Promise<Response> {
+  private async requestSearch(
+    query: string,
+    token: string,
+  ): Promise<Response> {
     const url = new URL(SEARCH_URL);
     url.searchParams.set('q', query);
     url.searchParams.set('limit', '50');
-    url.searchParams.set('filter', 'buyingOptions:{FIXED_PRICE},deliveryCountry:FR');
+    url.searchParams.set('filter', SEARCH_FILTER);
 
     return fetchWithTimeout(
       this.fetchImpl,
@@ -157,45 +213,11 @@ export class EbayClient {
 
     const listings: Listing[] = [];
     for (const summary of summaries) {
-      const item = record(summary);
-      const price = record(item?.price);
-      const rawPrice = price?.value;
-      const amount =
-        typeof rawPrice === 'string' || typeof rawPrice === 'number'
-          ? Number(rawPrice)
-          : Number.NaN;
-      const itemId = item?.itemId;
-      const title = item?.title;
-      const itemWebUrl = item?.itemWebUrl;
-      const url =
-        typeof itemWebUrl === 'string'
-          ? safeMarketplaceUrl(itemWebUrl, 'www.ebay.fr')
-          : undefined;
-
-      if (
-        typeof itemId !== 'string' ||
-        !itemId ||
-        typeof title !== 'string' ||
-        !title.trim() ||
-        price?.currency !== 'EUR' ||
-        !Number.isFinite(amount) ||
-        amount <= 0 ||
-        !url
-      ) {
-        continue;
-      }
-
-      listings.push({
-        id: `ebay-${itemId}`,
-        provider: 'ebay',
-        title: title.trim().slice(0, 120),
-        price: amount,
-        currency: 'EUR',
-        url,
-      });
+      const listing = listingFromSummary(summary);
+      if (!listing) continue;
+      listings.push(listing);
       if (listings.length >= MAX_RESULTS) break;
     }
-
     return listings;
   }
 
@@ -213,7 +235,10 @@ export class EbayClient {
   }
 }
 
-const gate = new SerialGate(config.EBAY_GAP_MS, config.PROVIDER_MAX_QUEUE);
+const gate = new SerialGate(
+  config.EBAY_GAP_MS,
+  config.PROVIDER_MAX_QUEUE,
+);
 const client = new EbayClient({
   clientId: config.EBAY_CLIENT_ID,
   clientSecret: config.EBAY_CLIENT_SECRET,
