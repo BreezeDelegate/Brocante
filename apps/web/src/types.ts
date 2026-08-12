@@ -1,4 +1,5 @@
 export type ProviderId = 'vinted' | 'leboncoin' | 'ebay';
+export type ProviderErrorCode = 'busy' | 'timeout' | 'unavailable';
 export type ScanStatus = 'draft' | 'processing' | 'done' | 'error';
 
 export interface Listing {
@@ -9,6 +10,11 @@ export interface Listing {
   currency: string;
   url: string;
   image?: string | undefined;
+}
+
+export interface ProviderError {
+  provider: ProviderId;
+  error: ProviderErrorCode;
 }
 
 export interface Estimate {
@@ -26,6 +32,8 @@ export interface Scan {
   createdAt: number;
   listings: Listing[];
   estimate?: Estimate | undefined;
+  providerErrors?: ProviderError[] | undefined;
+  lastAttemptAt?: number | undefined;
   error?: string | undefined;
 }
 

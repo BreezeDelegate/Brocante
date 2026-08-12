@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Camera,
   Check,
   ChevronDown,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { allProvidersFailed, providerErrorLabel } from './analysis';
 import { activeProviders, identify, search } from './api';
 import { estimate } from './estimate';
 import { captureVideoFrame, compressImage } from './image';
@@ -51,9 +53,12 @@ export function App() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [batchRunning, setBatchRunning] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
+  const inFlight = useRef(new Set<string>());
+  const persistence = useRef(new Map<string, Promise<void>>());
 
   useEffect(() => {
     void loadScans().then((storedScans) => {
@@ -77,10 +82,27 @@ export function App() {
       ),
     [filterEnabled, preferences.minimumValue, scans],
   );
+  const hasProcessing = scans.some((scan) => scan.status === 'processing');
+
+  function queuePersistence(id: string, work: () => Promise<void>): void {
+    const previous = persistence.current.get(id) ?? Promise.resolve();
+    const queued = previous
+      .catch(() => undefined)
+      .then(work)
+      .catch(() => undefined);
+    persistence.current.set(id, queued);
+    void queued.then(() => {
+      if (persistence.current.get(id) === queued) persistence.current.delete(id);
+    });
+  }
+
+  function persistScan(scan: Scan): void {
+    queuePersistence(scan.id, () => putScan(scan));
+  }
 
   function storeScan(scan: Scan): void {
     setScans((current) => [scan, ...current.filter((item) => item.id !== scan.id)]);
-    void putScan(scan).catch(() => undefined);
+    persistScan(scan);
   }
 
   function patchScan(id: string, patch: Partial<Scan>): void {
@@ -88,7 +110,7 @@ export function App() {
       current.map((scan) => {
         if (scan.id !== id) return scan;
         const updated = { ...scan, ...patch };
-        void putScan(updated).catch(() => undefined);
+        persistScan(updated);
         return updated;
       }),
     );
@@ -145,14 +167,22 @@ export function App() {
     if (fileInput.current) fileInput.current.value = '';
   }
 
-  async function run(scan: Scan): Promise<void> {
+  async function run(scan: Scan): Promise<boolean> {
+    if (inFlight.current.has(scan.id)) return true;
+
     const providers = activeProviders(preferences);
     if (providers.length === 0) {
       patchScan(scan.id, { status: 'error', error: 'Active au moins une source.' });
-      return;
+      return false;
     }
 
-    patchScan(scan.id, { status: 'processing', error: undefined });
+    inFlight.current.add(scan.id);
+    patchScan(scan.id, {
+      status: 'processing',
+      error: undefined,
+      providerErrors: undefined,
+      lastAttemptAt: Date.now(),
+    });
 
     try {
       let label = scan.label.trim();
@@ -162,28 +192,52 @@ export function App() {
           status: 'draft',
           error: 'Ajoute un nom ou active Ollama sur le serveur.',
         });
-        return;
+        return true;
       }
 
       patchScan(scan.id, { label });
-      const listings = await search(preferences, label, providers);
+      const result = await search(preferences, label, providers);
+      if (allProvidersFailed(result.errors, providers) && result.listings.length === 0) {
+        patchScan(scan.id, {
+          status: 'error',
+          providerErrors: result.errors,
+          error: 'Aucune source n’a pu répondre. La file est mise en pause.',
+        });
+        return false;
+      }
+
       patchScan(scan.id, {
-        listings,
-        estimate: estimate(listings),
+        listings: result.listings,
+        estimate: estimate(result.listings),
+        providerErrors: result.errors.length ? result.errors : undefined,
         status: 'done',
         error: undefined,
       });
+      return true;
     } catch (error) {
       patchScan(scan.id, {
         status: 'error',
         error: error instanceof Error ? error.message : 'Erreur inconnue',
       });
+      return false;
+    } finally {
+      inFlight.current.delete(scan.id);
     }
   }
 
   async function runPending(): Promise<void> {
-    for (const scan of scans.filter((item) => item.status === 'draft' || item.status === 'error')) {
-      await run(scan);
+    if (batchRunning) return;
+    setBatchRunning(true);
+    try {
+      for (const scan of scans.filter(
+        (item) => item.status === 'draft' || item.status === 'error',
+      )) {
+        if (inFlight.current.has(scan.id)) continue;
+        const shouldContinue = await run(scan);
+        if (!shouldContinue) break;
+      }
+    } finally {
+      setBatchRunning(false);
     }
   }
 
@@ -198,12 +252,15 @@ export function App() {
 
   function removeScan(id: string): void {
     setScans((current) => current.filter((scan) => scan.id !== id));
-    void deleteScan(id).catch(() => undefined);
+    queuePersistence(id, () => deleteScan(id));
   }
 
   async function clearHistory(): Promise<void> {
+    if (batchRunning || hasProcessing) return;
+    await Promise.all(persistence.current.values());
     setScans([]);
     await clearScans().catch(() => undefined);
+    persistence.current.clear();
   }
 
   return (
@@ -229,8 +286,13 @@ export function App() {
           <button className="secondary" onClick={() => fileInput.current?.click()}>
             Importer
           </button>
-          <button className="secondary" disabled={!scans.length} onClick={() => void runPending()}>
-            <Search /> Analyser
+          <button
+            className="secondary"
+            disabled={!scans.length || batchRunning}
+            onClick={() => void runPending()}
+          >
+            {batchRunning ? <LoaderCircle className="spin" /> : <Search />}
+            {batchRunning ? 'Analyse en cours…' : 'Analyser'}
           </button>
         </div>
         {cameraError && <small className="cameraError">{cameraError}</small>}
@@ -282,9 +344,20 @@ export function App() {
                 </div>
               )}
               {scan.error && <small className="error">{scan.error}</small>}
+              {scan.providerErrors && scan.providerErrors.length > 0 && (
+                <div className="warning">
+                  <AlertTriangle />
+                  <span>{scan.providerErrors.map(providerErrorLabel).join(' · ')}</span>
+                </div>
+              )}
               <div className="row">
                 <button onClick={() => void run(scan)} disabled={scan.status === 'processing'}>
-                  <Search /> Analyser
+                  <Search />
+                  {scan.status === 'error'
+                    ? 'Réessayer'
+                    : scan.status === 'done'
+                      ? 'Actualiser'
+                      : 'Analyser'}
                 </button>
                 <button
                   className="danger"
@@ -409,7 +482,11 @@ export function App() {
               <button className="secondary full" onClick={() => setPreferences(defaults)}>
                 Réinitialiser les réglages
               </button>
-              <button className="secondary full dangerText" onClick={() => void clearHistory()}>
+              <button
+                className="secondary full dangerText"
+                disabled={batchRunning || hasProcessing}
+                onClick={() => void clearHistory()}
+              >
                 Effacer l'historique
               </button>
             </div>

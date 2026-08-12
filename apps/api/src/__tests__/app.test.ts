@@ -40,8 +40,11 @@ afterEach(
     }),
 );
 
-async function start(apiToken?: string): Promise<string> {
-  const app = createApp(providers(), apiToken);
+async function start(
+  providerMap: Record<ProviderId, Provider> = providers(),
+  apiToken?: string,
+): Promise<string> {
+  const app = createApp(providerMap, apiToken);
   server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server?.once('listening', () => resolve()));
   const address = server.address();
@@ -69,7 +72,7 @@ describe('API', () => {
 
   it('enforces a configured API token but keeps health public', async () => {
     const token = 'test-token-0123456789abcdef';
-    const base = await start(token);
+    const base = await start(providers(), token);
 
     const denied = await fetch(`${base}/search`, {
       method: 'POST',
@@ -123,13 +126,8 @@ describe('API', () => {
       },
     };
 
-    const app = createApp(providerMap);
-    server = app.listen(0, '127.0.0.1');
-    await new Promise<void>((resolve) => server?.once('listening', () => resolve()));
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('missing server address');
-
-    const response = await fetch(`http://127.0.0.1:${address.port}/search`, {
+    const base = await start(providerMap);
+    const response = await fetch(`${base}/search`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ query: 'objet test', providers: ['vinted'] }),
@@ -137,5 +135,45 @@ describe('API', () => {
     const body = (await response.json()) as { listings: Array<{ price: number }> };
     expect(response.status).toBe(200);
     expect(body.listings[0]?.price).toBe(12);
+  });
+
+  it('keeps successful results when another provider fails', async () => {
+    const providerMap = providers();
+    providerMap.vinted = {
+      id: 'vinted',
+      async search() {
+        throw new Error('provider changed');
+      },
+    };
+    providerMap.leboncoin = {
+      id: 'leboncoin',
+      async search() {
+        return [
+          {
+            id: '2',
+            provider: 'leboncoin',
+            title: 'Objet comparable',
+            price: 18,
+            currency: 'EUR',
+            url: 'https://www.leboncoin.fr/ad/2',
+          },
+        ];
+      },
+    };
+
+    const base = await start(providerMap);
+    const response = await fetch(`${base}/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: 'objet test', providers: ['vinted', 'leboncoin'] }),
+    });
+    const body = (await response.json()) as {
+      listings: Array<{ provider: string; price: number }>;
+      errors: Array<{ provider: string; error: string }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.listings).toEqual([expect.objectContaining({ provider: 'leboncoin', price: 18 })]);
+    expect(body.errors).toEqual([{ provider: 'vinted', error: 'unavailable' }]);
   });
 });

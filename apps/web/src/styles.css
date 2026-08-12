@@ -167,7 +167,8 @@ h1 span {
   font-size: 12px;
 }
 .state,
-.error {
+.error,
+.warning {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -175,6 +176,16 @@ h1 span {
 }
 .error {
   color: #a83c2d;
+}
+.warning {
+  color: #7a5d14;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.warning svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
 }
 .row button {
   padding: 10px 12px;
