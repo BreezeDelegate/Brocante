@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24
+          node-version: 24.18.0
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -31,12 +31,18 @@ jobs:
       - name: Verify
         run: npm run check
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Generate SBOM
+        run: npm sbom --omit=dev --sbom-format=cyclonedx --sbom-type=application > brocante-sbom.cdx.json
+
       - name: Package PWA
         run: |
           cd apps/web/dist
           zip -qr ../../../brocante-pwa.zip .
           cd ../../..
-          sha256sum brocante-pwa.zip > brocante-pwa.zip.sha256
+          sha256sum brocante-pwa.zip brocante-sbom.cdx.json > SHA256SUMS
 
       - name: Publish release
         env:
@@ -44,7 +50,8 @@ jobs:
         run: >-
           gh release create "${GITHUB_REF_NAME}"
           brocante-pwa.zip
-          brocante-pwa.zip.sha256
+          brocante-sbom.cdx.json
+          SHA256SUMS
           --verify-tag
           --generate-notes
           --title "Brocante ${GITHUB_REF_NAME}"
