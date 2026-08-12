@@ -1,0 +1,50 @@
+name: Feature request
+description: Propose a focused product or engineering improvement
+title: '[Feature] '
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or operational problem should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe the behavior/outcome, not only an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include a simpler option if one exists.
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Likely risk area
+      options:
+        - Low / documentation or isolated UI
+        - Normal / product behavior
+        - High / auth, browser, network, Docker, persistence, dependencies, CI or release
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security, privacy and operations
+      description: New data, third parties, ingress/egress, permissions, persistence or deployment impact. Say none if none.
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: The proposal does not rely on CAPTCHA/anti-bot circumvention, proxy rotation or fingerprint spoofing.
+          required: true
+        - label: I have not included secrets, personal photos or production data.
+          required: true
