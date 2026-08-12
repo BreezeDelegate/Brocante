@@ -18,6 +18,9 @@ const envSchema = z.object({
   OLLAMA_MODEL: z.string().trim().min(1).max(120).default('qwen2.5vl:3b'),
   VINTED_GAP_MS: z.coerce.number().int().min(1_000).max(60_000).default(2_500),
   LEBONCOIN_GAP_MS: z.coerce.number().int().min(1_000).max(60_000).default(3_000),
+  EBAY_GAP_MS: z.coerce.number().int().min(250).max(60_000).default(1_000),
+  EBAY_CLIENT_ID: z.string().trim().max(256).default(''),
+  EBAY_CLIENT_SECRET: z.string().trim().max(512).default(''),
 });
 
 const env = envSchema.parse(process.env);
@@ -26,6 +29,10 @@ if (env.NODE_ENV === 'production' && !env.API_TOKEN && env.ALLOW_UNAUTHENTICATED
   throw new Error(
     'API_TOKEN is required in production. Set ALLOW_UNAUTHENTICATED=1 only behind trusted private access.',
   );
+}
+
+if (Boolean(env.EBAY_CLIENT_ID) !== Boolean(env.EBAY_CLIENT_SECRET)) {
+  throw new Error('EBAY_CLIENT_ID and EBAY_CLIENT_SECRET must be configured together.');
 }
 
 export const config = {

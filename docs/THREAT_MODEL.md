@@ -6,6 +6,7 @@ This document records the security assumptions and residual risks that matter wh
 
 - User photos and local scan history
 - API bearer token for private deployments
+- Optional eBay client secret and application access token
 - Host/VPS integrity
 - Private Ollama endpoint and model service
 - Browser process/container boundary
@@ -19,7 +20,8 @@ This document records the security assumptions and residual risks that matter wh
 3. API process to Playwright/Chromium
 4. Chromium to untrusted marketplace pages and their subresources
 5. API process to private Ollama
-6. Repository source to npm/Docker/GitHub Actions supply chain
+6. API process to external HTTPS provider APIs such as eBay OAuth/Browse
+7. Repository source to npm/Docker/GitHub Actions supply chain
 
 Anything crossing a boundary is untrusted unless explicitly validated or authenticated.
 
@@ -39,6 +41,14 @@ Controls: non-root runtime, Chromium sandbox, Playwright seccomp profile, read-o
 
 Residual risk: hostname policy alone cannot cryptographically eliminate DNS rebinding or every browser/runtime vulnerability. High-assurance deployments should additionally apply host/cloud firewall egress policy, isolate the browser workload/network namespace or place it in a dedicated VM/container service with only required internet access.
 
+### Compromised or malicious external provider API
+
+Goals/effects: return malformed or misleading marketplace data, induce resource exhaustion, redirect users to an unexpected host or trigger repeated credential/token requests.
+
+Controls: bounded request timeouts, provider pacing and shared cache, strict parsing of external responses, exact HTTPS marketplace-link validation, currency/price validation, generic provider failures and finite token reuse. eBay OAuth credentials remain server-side, tokens are cached in memory only, and a 401 causes at most one token refresh/retry for that search.
+
+Residual risk: provider availability, API-policy changes, account approval and upstream correctness remain outside Brocante's control. Provider failure must degrade only that source and must not cause credentials, raw responses or internal error details to be exposed.
+
 ### Malicious/incorrect AI output
 
 Goals: inject misleading labels or content into later processing.
@@ -55,9 +65,9 @@ Residual risk: upstream package registries and base images remain external trust
 
 ### Operator/configuration error
 
-Goals/effects: accidental public API/Ollama exposure, trusting spoofed forwarding headers, leaking a token or disabling authentication.
+Goals/effects: accidental public API/Ollama exposure, trusting spoofed forwarding headers, leaking a token or provider credential, partially configuring eBay credentials or disabling authentication.
 
-Controls: secure defaults, production token requirement, localhost Compose port binding, explicit `TRUST_PROXY`, `.env.example`, deployment checklist and incident/rollback runbook.
+Controls: secure defaults, production token requirement, paired eBay credential validation, localhost Compose port binding, explicit `TRUST_PROXY`, `.env.example`, deployment checklist and incident/rollback runbook.
 
 ## Security invariants
 
@@ -65,17 +75,20 @@ Controls: secure defaults, production token requirement, localhost Compose port 
 - Production API authentication is enabled unless an explicit trusted access layer replaces it.
 - Public host port remains bound to loopback in the supplied Compose setup.
 - Ollama remains private.
+- Provider credentials and application tokens remain server-side and are never returned to the PWA.
 - Browser execution never requires privileged container mode or `SYS_ADMIN` in production.
 - Container capabilities follow a drop-all baseline with only `SYS_CHROOT` re-added for the Chromium sandbox.
 - Main browser navigation remains host-allowlisted.
 - Network-facing operations remain bounded by size, time and queue limits.
-- Marketplace blocking/DOM changes cause provider failure, not anti-abuse bypasses.
+- Marketplace blocking/DOM/API changes cause provider failure, not anti-abuse bypasses.
 
 ## Privacy properties
 
 Captured photos and scan history live in browser storage. The API has no durable user database. An image is transmitted only when analysis is requested. Logs contain request metadata only. There are no analytics or third-party application scripts by default.
 
 The optional API token stored by the PWA is a shared deployment secret, not per-user identity. A compromise of the application origin can expose it; use a trusted same-origin deployment, strong CSP and no third-party scripts.
+
+Marketplace search queries necessarily leave the API for the selected provider. eBay OAuth credentials are not search data and are never sent to the PWA; the client secret is sent only to eBay's token endpoint over HTTPS as required by the client-credentials flow.
 
 ## Review triggers
 
